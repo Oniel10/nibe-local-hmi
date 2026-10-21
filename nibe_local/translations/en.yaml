@@ -1,0 +1,8 @@
+{
+  "configuration": {
+    "cache_seconds": {
+      "name": "Cache lifetime",
+      "description": "Seconds to reuse a menu response (1–300)."
+    }
+  }
+}

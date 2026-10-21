@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible problem without credentials.
+body:
+  - type: markdown
+    attributes:
+      value: Never attach tokens, serial numbers, passwords, app data or backups.
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: HA OS/Core version and CPU architecture
+    validations:
+      required: true
+  - type: input
+    id: controller
+    attributes:
+      label: Controller model and firmware (no serial number)
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected behavior and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted error text
+      description: Remove IPs, serials, identifiers and all credentials first.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed credentials and personal device identifiers.
+          required: true

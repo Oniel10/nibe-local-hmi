@@ -1,0 +1,27 @@
+{
+  "name": "NIBE Local HMI",
+  "version": "0.5.0",
+  "slug": "nibe_local",
+  "description": "Local NIBE menu interface with pairing, encrypted credentials and protected writes",
+  "arch": [
+    "amd64",
+    "aarch64"
+  ],
+  "startup": "application",
+  "boot": "auto",
+  "init": true,
+  "ingress": true,
+  "ingress_port": 8099,
+  "panel_icon": "mdi:heat-pump",
+  "panel_title": "NIBE Local HMI",
+  "panel_admin": true,
+  "options": {
+    "cache_seconds": 5
+  },
+  "schema": {
+    "cache_seconds": "int(1,300)"
+  },
+  "host_network": true,
+  "stage": "experimental",
+  "url": "https://github.com/Oniel10/nibe-local-hmi"
+}

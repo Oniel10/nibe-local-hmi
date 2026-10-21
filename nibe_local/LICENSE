@@ -1,0 +1,49 @@
+NIBE Local HMI Non-Commercial No-Modification License 1.0
+
+Copyright (c) 2026 Oniel10. All rights reserved.
+
+1. Permission
+You may download, inspect, install and run this Software free of charge for
+your own non-commercial purposes. You may make necessary installation and
+backup copies and share exact, unmodified copies free of charge, retaining
+this license and all copyright notices. No other rights are granted.
+
+2. No commercial use
+You may not use or distribute the Software for commercial purposes, including
+sale, rental, paid hosting, paid services or integration, paid bundles, or
+operation for a business, without prior written permission from the copyright
+holder. Making the Software available at no charge does not by itself make
+a commercial activity non-commercial.
+
+3. No modified versions
+You may not modify, adapt, translate, create derivative versions of, or
+distribute modified versions of the Software without prior written permission
+from the copyright holder. Configuring documented options, pairing a device,
+changing controller settings through the supplied interface, and building
+or packaging the unchanged source solely as needed for permitted installation
+are allowed and are not prohibited modifications under this license.
+
+4. Platform and statutory rights
+This license does not restrict rights that cannot legally be excluded.
+Where the Software is made public on GitHub, the viewing, copying and forking
+rights required by the applicable GitHub Terms of Service remain unaffected.
+Such platform rights do not grant a general right to commercial exploitation
+or distribution of modified versions beyond those terms or mandatory law.
+
+5. Third-party components
+This license covers only material the copyright holder has the right to
+license. Dependencies and other third-party components remain subject to
+their own licenses; this license does not replace or restrict those rights.
+No rights in NIBE trademarks or vendor software are granted.
+
+6. Warranty and liability
+The Software is supplied AS IS, without warranties, to the extent permitted
+by applicable law. Use and changes to heating equipment are at your own risk.
+To the extent permitted by applicable law, the copyright holder is not liable
+for loss or damage arising from the Software. Nothing excludes liability
+that cannot legally be excluded, including applicable mandatory consumer rights.
+
+7. Other permissions
+Contact the maintainer through the project repository to request permission
+for uses not permitted here. No trademark rights or sublicensing rights are
+granted. This is a source-available license, not an open-source license.

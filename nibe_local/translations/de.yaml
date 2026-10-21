@@ -1,0 +1,8 @@
+{
+  "configuration": {
+    "cache_seconds": {
+      "name": "Cache-Dauer",
+      "description": "Sekunden, für die Menüantworten wiederverwendet werden (1–300)."
+    }
+  }
+}

@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!requirements.txt
+!nibe_app.py
+!nibe_web.py
+!nibe_ui.js
+!LICENSE

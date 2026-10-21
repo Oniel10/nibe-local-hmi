@@ -1,0 +1,11 @@
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+let ready, hidden, click, inputHandler, requests=0;
+const input={type:'password',value:'',dataset:{},addEventListener:(n,f)=>{inputHandler=f;}};
+const button={dataset:{menu:'732',parameter:'61601'},disabled:false,attrs:{},parentElement:{querySelector:()=>input},setAttribute(k,v){this.attrs[k]=v;},addEventListener(n,f){click=f;}};
+const status={textContent:''};
+const document={hidden:false,addEventListener(n,f){if(n==='DOMContentLoaded')ready=f;else hidden=f;},getElementById(id){return id==='ui-context'?{dataset:{base:'/api/hassio_ingress/test',csrf:'fixture'}}:status;},querySelectorAll(){return [button];}};
+const context={document,URLSearchParams,fetch:async()=>{requests++;return {ok:true,json:async()=>({value:'MockPassword123'})};}};
+vm.runInNewContext(fs.readFileSync('nibe_local/nibe_ui.js','utf8'),context);
+(async()=>{ready();assert.strictEqual(input.type,'password');await click();assert.strictEqual(requests,1);assert.strictEqual(input.type,'text');assert.strictEqual(input.value,'MockPassword123');assert.strictEqual(button.attrs['aria-pressed'],'true');await click();assert.strictEqual(input.type,'password');assert.strictEqual(input.value,'');input.value='EditedPassword123';inputHandler();await click();assert.strictEqual(requests,1);assert.strictEqual(input.value,'EditedPassword123');document.hidden=true;hidden();assert.strictEqual(input.type,'password');assert.strictEqual(input.value,'EditedPassword123');console.log('OK: Augen-Schalter, separater Abruf, Verbergen und bearbeitete Eingabe erhalten.');})().catch(e=>{console.error(e);process.exitCode=1;});

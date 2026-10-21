@@ -1,0 +1,22 @@
+name: Compatibility report
+description: Share model/firmware results without device identifiers.
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Controller model and firmware
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: HA OS/Core, app version and CPU architecture
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: What worked and what failed
+      description: Discovery, pairing, restart, menus, password masking. State explicitly whether real writes were tested.
+    validations:
+      required: true
