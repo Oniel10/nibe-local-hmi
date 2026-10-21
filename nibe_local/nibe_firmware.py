@@ -231,6 +231,12 @@ def upload(app, expected_sha, epoch):
         device = app.api(session['host'], session['port'], '/devices/' + session['serial'], session['token'])
         if not isinstance(device, dict) or (device.get('features') or {}).get('fwUpdate') is not True:
             raise FirmwareError('Die WP meldet keine lokale Firmware-Update-Freigabe.')
+        family = str((device.get('product') or {}).get('firmwareId') or '').lower()
+        filename = meta['name'].lower()
+        if not re.fullmatch(r'[a-z0-9][a-z0-9._-]{0,63}', family):
+            raise FirmwareError('Die WP liefert keine eindeutige Firmwarefamilie. Übertragung nicht freigegeben.')
+        if not (filename == family + '.swu' or filename.startswith(family + '-')):
+            raise FirmwareError('Der Dateiname passt nicht zur gemeldeten Firmwarefamilie ' + family + '. Passende Originaldatei wählen; die Datei nicht nur umbenennen.')
         ATTEMPTS.add(attempt)
         boundary = 'NibeHMI' + secrets.token_hex(20)
         prefix = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{meta["name"]}"\r\n'
@@ -300,7 +306,7 @@ def page(app, base):
         body += '<div class="card note"><h3>Bereitgestellte Datei</h3>'
         body += f'<p>{e(meta["name"])} · {meta["size"] / 1048576:.1f} MiB</p><p class="hash">SHA-256: {e(meta["sha256"])}</p>'
         body += f'<a class="button" href="{base}/hmi/firmware/file">Datei auf diesen Rechner herunterladen</a>'
-        body += '<p>Dateiformat und Prüfsumme werden geprüft. Gerätekompatibilität und Hersteller-Signatur kann diese App nicht bestätigen. Nur eine ausdrücklich für deinen Regler bestimmte Datei übertragen.</p>'
+        body += '<p>Dateiformat, Prüfsumme und Dateinamen-Zuordnung zur gemeldeten Firmwarefamilie werden geprüft. Das bestätigt weder die tatsächliche Gerätekompatibilität noch eine Hersteller-Signatur. Nur eine ausdrücklich für deinen Regler bestimmte Originaldatei übertragen.</p>'
         body += app.hmi.form(base, 'firmware-upload', app.hidden('sha256', meta['sha256']), 'Firmware an WP übertragen',
                              ack='Die Datei ist für meinen Regler bestimmt. Ich möchte die Übertragung starten; sie kann ein Update und einen Neustart auslösen. Währenddessen die Stromversorgung nicht unterbrechen.')
         body += app.hmi.form(base, 'firmware-remove', app.hidden('sha256', meta['sha256']), 'Datei aus der App entfernen',

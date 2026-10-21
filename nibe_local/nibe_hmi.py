@@ -55,7 +55,7 @@ def safe(value, depth=0):
         secret_row = 'parameterId' in value and APP.is_secret(dict(value, metadata=metadata if isinstance(metadata, dict) else {}))
         result = {}
         for key, child in value.items():
-            if re.search(r'password|passwort|passphrase|token|secret|authorization|private.?key', str(key), re.I):
+            if re.search(r'password|passwort|passphrase|token|secret|authorization|private.?key', str(key), re.I) and not isinstance(child, bool):
                 result[key] = '********'
             elif secret_row and key in ('value', 'dateValue', 'timeValue', 'data', 'metadata'):
                 result[key] = '********'
@@ -135,7 +135,7 @@ def cards(rows, base, mid):
             continue
         value = APP.web.fmt_value(row)
         if value is not None:
-            result.append(f'<a class="metric card" href="{base}/menu/{mid}"><span>{esc(APP.web.label(row))}</span><strong>{esc(value)}</strong></a>')
+            result.append(f'<a class="metric card" href="{base}/menu/{mid}?from=overview"><span>{esc(APP.web.label(row))}</span><strong>{esc(value)}</strong></a>')
     result.append('</div>')
     return ''.join(result)
 
@@ -169,7 +169,7 @@ def overview(base):
         menus = APP.get_menu('38')
         for row in APP.web.visible_rows(menus):
             if row.get('type') == 'uilink' and str(row.get('id', '')).isdigit():
-                body += f'<a class="row" href="{base}/menu/{row["id"]}?trail=0,37,38">{esc(APP.web.label(row))}</a>'
+                body += f'<a class="row" href="{base}/menu/{row["id"]}?from=overview">{esc(APP.web.label(row))}</a>'
     except APP.web.WpError:
         body += '<p>Betriebsinformationen über den Menübaum auswählen.</p>'
     body += '</div><details><summary>Geräteinformationen</summary>' + pretty(device) + '</details>'
@@ -181,19 +181,29 @@ def alarms(base):
     body = error
     if data is None:
         return body
-    if not isinstance(data, dict) or not isinstance(data.get('alarmList'), list):
+    items = alarm_items(data)
+    if items is None:
         return '<p>Unbekanntes Meldungsformat.</p>' + pretty(data)
-    if not data['alarmList']:
+    if not items:
         body += '<div class="card note">Die WP meldet aktuell keine Einträge.</div>'
-    for item in data['alarmList'][:500]:
+    for item in items[:500]:
+        if not isinstance(item, dict):
+            continue
         body += '<article class="card note"><h2>' + esc(item.get('header') or 'Meldung') + '</h2>'
         body += '<p>' + esc(item.get('description') or '') + '</p><p>' + esc(item.get('time') or '') + '</p>'
         body += '<p>Gerät: ' + esc(item.get('equipName') or '–') + ' · ID: ' + esc(item.get('alarmId', '–')) + ' · Schweregrad: ' + esc(item.get('severity', '–')) + '</p></article>'
-    if data['alarmList']:
+    if items:
         body += form(base, 'notifications-clear', APP.hidden('expected', signature(data)), 'Meldungen quittieren',
                      ack='Ich möchte alle von dieser Schnittstelle gemeldeten Meldungen quittieren/löschen. Das behebt keine Störungsursache.')
     body += '<p>Dies sind die von /notifications gelieferten Meldungen. Ein vollständiger historischer Alarmverlauf wird von dieser Schnittstelle nicht zugesichert.</p>'
     return body
+
+
+def alarm_items(data):
+    if not isinstance(data, dict):
+        return None
+    value = data.get('alarms', data.get('alarmList'))
+    return value if isinstance(value, list) else None
 
 
 def zones_list(data):
@@ -229,9 +239,10 @@ def clock(base):
 
 def flow(base):
     data, error = read_page('flow')
+    body = functional_flow(base)
     if data is None:
-        return error
-    body = '<p>Von der lokalen Schnittstelle gelieferte Anlageninformationen. Es werden keine Cloud-Grafiken geladen.</p>'
+        return body + '<details><summary>Originales Anlagenschema</summary>' + error + '<p>Diese WP stellt das originale Hydraulikbild hier nicht lokal bereit.</p></details>'
+    body += '<p>Zusätzliche von der lokalen Schnittstelle gelieferte Anlageninformationen. Es werden keine Cloud-Grafiken geladen.</p>'
     if isinstance(data, dict):
         body += '<div class="metric-grid">'
         labels = {'controlUnitName': 'Regler', 'controlUnit': 'Reglerkennung', 'operatingMode': 'Betriebsart', 'controlUnitType': 'Reglertyp'}
@@ -247,13 +258,70 @@ def flow(base):
     return body + '<details><summary>Weitere Anlagendaten</summary>' + pretty(data) + '</details>'
 
 
+def functional_flow(base):
+    """Associate observed S-series operating values; no inferred hydraulic topology or active flows."""
+    try:
+        rows = APP.web.visible_rows(APP.get_menu('40'))
+    except APP.web.WpError:
+        return '<p>Keine lokalen Betriebswerte für die Funktionsübersicht verfügbar.</p>'
+    by_id = {str(r.get('parameterId')): r for r in rows if r.get('parameterId') is not None and not APP.is_secret(r)}
+    def val(pid, label):
+        row = by_id.get(str(pid))
+        if not row:
+            return None
+        value = APP.web.fmt_value(row)
+        if value is None or value == '–':
+            return None
+        return label + ': ' + str(value)
+    nodes = []
+    def node(title, x, y, mid, values):
+        lines = [v for v in values if v]
+        if lines:
+            nodes.append({'title': title, 'x': x, 'y': y, 'mid': mid, 'lines': lines})
+    node('Wärmequelle', 5, 165, '41', [val('13', 'Eintritt'), val('14', 'Austritt')])
+    node('Außen', 250, 5, '40', [val('4', 'Temperatur')])
+    node('Heizkreis', 495, 65, '41', [val('8', 'Vorlauf'), val('10', 'Rücklauf'), val('55002', 'Soll')])
+    node('Warmwasser', 495, 215, '42', [val('12', 'Ladung')])
+    node('Kühlung', 495, 365, '43', [val('1522', 'Vorlauf'), val('55475', 'Soll')])
+    center_lines = [v for v in (val('23675', 'Status'), val('55000', 'Priorität')) if v]
+    if not nodes and not center_lines:
+        return '<p>Die lokale Betriebsübersicht liefert keine eindeutig zugeordneten Funktionswerte.</p>'
+    def box(item, width=220):
+        x,y = item['x'],item['y']
+        url = f'{base}/menu/{item["mid"]}?from=flow'
+        parts = [f'<a href="{url}" aria-label="{esc(item["title"])} öffnen"><rect x="{x}" y="{y}" width="{width}" height="110" rx="12" fill="var(--card)" stroke="var(--line)"/>',
+                 f'<text x="{x+12}" y="{y+25}" fill="var(--fg)" font-size="16" font-weight="600">{esc(item["title"])}</text>']
+        for index,line in enumerate(item['lines'][:3]):
+            # Label/value content is escaped and bounded, never interpreted as SVG markup.
+            parts.append(f'<text x="{x+12}" y="{y+49+index*23}" fill="var(--mut)" font-size="13">{esc(line[:31])}</text>')
+        parts.append('</a>')
+        return ''.join(parts)
+    parts = ['<h2>Lokale Funktionsübersicht</h2><p>Aktuelle WP-Betriebswerte, schematisch angeordnet. Linien zeigen die Zuordnung der Funktionsgruppen, keinen hydraulischen Rohrverlauf und keine bestätigten Energieflüsse. Gruppen anklicken, um ihre Werte zu öffnen.</p>',
+             '<svg viewBox="0 0 720 490" role="img" aria-label="Schematische Funktionsgruppen mit aktuellen Wärmepumpenwerten">']
+    for item in nodes:
+        end_x = item['x'] + (220 if item['x'] < 250 else 110 if item['x'] == 250 else 0)
+        end_y = item['y'] + (110 if item['x'] == 250 else 55)
+        parts.append(f'<path d="M360 235 L{end_x} {end_y}" stroke="var(--line)" stroke-width="3" stroke-dasharray="7 5" fill="none"/>')
+    parts.append(box({'title':'Wärmepumpe','x':250,'y':180,'mid':'45','lines':center_lines or ['Status nicht gemeldet']}))
+    parts.extend(box(item) for item in nodes)
+    parts.append('</svg><p class="mut">Momentaufnahme aus der lokalen Betriebsübersicht. Durch erneutes Öffnen werden die Werte aktualisiert.</p>')
+    return ''.join(parts)
+
+
 def network(base):
     data, error = read_page('network')
     device, device_error = read_page('device')
     body = error + device_error
     if isinstance(data, dict):
         body += '<h2>WLAN-Netze</h2><div class="card">'
-        for net in data.get('wifiNetworks', [])[:200]:
+        networks = data.get('networks', data.get('wifiNetworks', []))
+        if not isinstance(networks, list):
+            networks = []
+        if not networks:
+            body += '<p class="note">Die WP liefert aktuell keine WLAN-Netze.</p>'
+        for net in networks[:200]:
+            if not isinstance(net, dict):
+                continue
             body += '<div class="row"><span>' + esc(net.get('ssid', '')) + '</span><span>' + esc(net.get('auth', '')) + ' · ' + esc(net.get('rssi', net.get('strength', '–'))) + '</span></div>'
         body += '</div>'
     if not isinstance(device, dict):
@@ -294,7 +362,46 @@ def capabilities(base):
     return body
 
 
-def parameters():
+def catalog_metadata(raw):
+    """Read root-level Trio metadata only. Dashes of any length delimit records."""
+    allowed = {'id', 'dis', 'displayName', 'unit', 'kind', 'minVal', 'maxVal', 'writable', 'point', 'sensor', 'cmd', 'equipRef'}
+    entries = []
+    record = {}
+    for line in raw.decode('utf-8').splitlines():
+        if re.fullmatch(r'-+', line.strip()):
+            if record:
+                entries.append(record)
+            record = {}
+        else:
+            # Indented lines may contain arbitrary multi-line strings or nested data, including secrets.
+            if not line or line[0].isspace() or line.startswith('//'):
+                continue
+            key, sep, value = line.partition(':')
+            key = key.strip()
+            if key in allowed:
+                if key == 'id' and 'id' in record:
+                    entries.append(record)
+                    record = {}
+                value = value.strip()[:500] if sep else True
+                if isinstance(value, str):
+                    if value.startswith('"'):
+                        try:
+                            decoded = json.loads(value)
+                            if isinstance(decoded, str):
+                                value = APP.web.clean(decoded)
+                        except ValueError:
+                            pass
+                    elif value in ('T', 'true'):
+                        value = True
+                    elif value in ('F', 'false'):
+                        value = False
+                record[key] = value
+    if record:
+        entries.append(record)
+    return entries
+
+
+def parameters(base='', query=None):
     raw = call('/haystack', raw=True)
     if raw[:2] == b'\x1f\x8b':
         import io
@@ -302,24 +409,32 @@ def parameters():
             raw = f.read(8 * 1024 * 1024 + 1)
     if len(raw) > 8 * 1024 * 1024:
         raise ValueError('Parameterkatalog zu groß.')
-    # TRIO-like catalogs contain current values as well. Only display metadata, never raw credential values.
-    allowed = {'id', 'dis', 'displayName', 'unit', 'kind', 'minVal', 'maxVal', 'writable', 'point', 'sensor', 'cmd', 'equipRef'}
-    entries = []
-    record = {}
-    for line in raw.decode('utf-8').splitlines():
-        if line.strip() == '---':
-            if record:
-                entries.append(record)
-            record = {}
-        else:
-            key, sep, value = line.partition(':')
-            if key.strip() in allowed:
-                record[key.strip()] = value.strip()[:500] if sep else True
-    if record:
-        entries.append(record)
+    entries = catalog_metadata(raw)
     if not entries:
         return '<p>Der Katalog verwendet ein bisher unbekanntes Format. Rohdaten werden nicht angezeigt, da sie Geheimnisse enthalten könnten.</p>'
-    return '<h2>Lokaler Parameterkatalog</h2><p>Nur Metadaten, keine geheimen oder ungeprüften Rohwerte.</p>' + pretty(entries)
+    query = query or {}
+    term, number = single(query, 'q'), single(query, 'p', '1')
+    if len(term) > 80 or not re.fullmatch(r'\d{1,6}', number):
+        raise ValueError('Ungültige Katalogsuche.')
+    total = len(entries)
+    if term:
+        entries = [r for r in entries if any(term.casefold() in str(r.get(key, '')).casefold() for key in ('id', 'dis', 'displayName', 'unit'))]
+    pages = max(1, (len(entries) + 199) // 200)
+    current = min(max(int(number), 1), pages)
+    start = (current - 1) * 200
+    body = '<h2>Lokaler Parameterkatalog</h2><p>Nur Metadaten, keine geheimen oder ungeprüften Rohwerte.</p>'
+    body += f'<form method="get" action="{base}/hmi/parameters"><label>Bezeichnung oder ID <input name="q" maxlength="80" value="{esc(term)}"></label><button>Suchen</button></form>'
+    body += f'<p>{len(entries)} Treffer aus {total} Katalogeinträgen · Seite {current} von {pages}</p><div class="catalog"><table><thead><tr><th>ID</th><th>Bezeichnung</th><th>Einheit</th><th>Bereich</th><th>Schreibbar</th></tr></thead><tbody>'
+    for r in entries[start:start+200]:
+        writable = 'Ja' if r.get('writable') is True else 'Nein' if r.get('writable') is False else '–'
+        bounds = str(r.get('minVal', '–')) + ' … ' + str(r.get('maxVal', '–'))
+        body += '<tr>' + ''.join('<td>'+esc(v)+'</td>' for v in (r.get('id', ''), r.get('dis') or r.get('displayName') or '', r.get('unit', ''), bounds, writable)) + '</tr>'
+    body += '</tbody></table></div><nav class="menu-nav">'
+    for target, caption in ((current-1, 'Vorherige Seite'), (current+1, 'Nächste Seite')):
+        if 1 <= target <= pages:
+            url = base + '/hmi/parameters?' + urllib.parse.urlencode({'q':term, 'p':target})
+            body += '<a href="' + esc(url) + '">' + caption + '</a>'
+    return body + '</nav>'
 
 
 def event_row(row, mid, base, trail):
@@ -411,11 +526,11 @@ def perform(operation, fields, base):
             rows = [r for r in APP.web.visible_rows(APP.get_menu(mid, fresh=True)) if r.get('type') == 'uievent' and str(r.get('eventId')) == event and r.get('enabled') is not False]
             if len(rows) != 1 or not secrets.compare_digest(single(fields, 'expected'), signature(rows[0])):
                 raise ValueError('Geräteaktion wurde inzwischen geändert. Menü erneut öffnen.')
+            destination = APP.menu_url(base, mid, APP.trail_list(single(fields, 'trail')), single(fields, 'origin'))
             call('/events/' + event, method='POST')
-            destination = APP.menu_url(base, mid, APP.trail_list(single(fields, 'trail')))
         elif operation == 'notifications-clear':
             data = call('/notifications')
-            if not isinstance(data, dict) or not data.get('alarmList') or not secrets.compare_digest(single(fields, 'expected'), signature(data)):
+            if not alarm_items(data) or not secrets.compare_digest(single(fields, 'expected'), signature(data)):
                 raise ValueError('Meldungen inzwischen geändert. Erneut prüfen.')
             call('/notifications', method='DELETE')
         elif operation == 'clock-save':
@@ -592,7 +707,8 @@ def route_get(handler, path, base):
             body = chain_page(base, key.split('/')[1])
             key = 'overview'
         elif key == 'parameters':
-            body = parameters()
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(handler.path).query, max_num_fields=2)
+            body = parameters(base, query)
             key = 'capabilities'
         elif key == 'firmware':
             body = firmware.page(APP, base)
@@ -606,7 +722,11 @@ def route_get(handler, path, base):
         msg = exc.msg if isinstance(exc, APP.web.WpError) else str(exc)
         if isinstance(exc, OSError):
             msg = 'Lokale Daten konnten nicht gelesen werden.'
-        handler._send(502 if isinstance(exc, APP.web.WpError) else 400, page(base, 'overview', '<p role="alert">' + esc(msg) + '</p>'))
+        code = 502 if isinstance(exc, APP.web.WpError) else 400
+        if path.startswith('/hmi/api/'):
+            handler._send(code, json.dumps({'error':msg},ensure_ascii=False), 'application/json; charset=utf-8')
+        else:
+            handler._send(code, page(base, 'overview', '<p role="alert">' + esc(msg) + '</p>'))
     return True
 
 

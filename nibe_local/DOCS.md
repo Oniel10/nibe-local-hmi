@@ -157,3 +157,14 @@ große Uploads werden beide begrenzt und auf eindeutige Nachrichtenlängen gepr�
 Das originale Hydraulikbild und unbekannte grafische Zeitpläne sind noch keine vollständige
 PRO-Nachbildung. Die App zeigt verfügbare Anlagen-/Custom-Daten transparent und erfindet keine
 hydraulischen Verbindungen. Einzelheiten: `docs/LOCAL_API.md` im Projekt-Repository.
+
+
+## Schematische Anlage ab 0.6.1
+
+„Anlage“ zeigt aus verfügbaren lokalen Betriebswerten eine anklickbare Funktionsübersicht.
+Wärmequelle, Heizkreis, Warmwasser und Kühlung erscheinen nur mit tatsächlich gelieferten Werten.
+Die gepunkteten Linien zeigen Funktionszuordnung, keine hydraulischen Rohre oder nachgewiesene
+Energieflüsse. Das originale Hydraulikbild ist auf der untersuchten NIBE-Firmware unter dem
+beobachteten lokalen systemFlow-Endpunkt nicht verfügbar (HTTP 404).
+Firmwareübertragung prüft zusätzlich den Dateinamen gegen die aktuell gemeldete Firmwarefamilie.
+Dies ersetzt weder Gerätekompatibilitätsprüfung noch Hersteller-Signaturprüfung.

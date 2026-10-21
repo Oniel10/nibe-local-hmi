@@ -1,13 +1,13 @@
 # Lokale PRO-Funktionen und Umsetzungsstand
 
-Stand 0.6.0, experimentell. Grundlage: Protokollanalyse von myUplink PRO 1.42,
+Stand 0.6.1, experimentell. Grundlage: Protokollanalyse von myUplink PRO 1.42,
 APK SHA-256 `efe6ee7eae6c7c3f05d808166f950132b202fe39f5001a0dc6a4bc16cde9d306`.
 Die APK sowie dekompilierte Implementierungen und Hersteller-Grafiken werden nicht verteilt.
 Die nachfolgende Liste beschreibt beobachtete Protokollfakten und unsere eigene Umsetzung.
 Es wird weder eine vollständige API-Dokumentation noch Unterstützung durch jede NIBE-Firmware behauptet.
 Alle Gerätepfade unten beginnen mit `/devices/{serial}`; Autorisierung lokal mit `Token`.
 
-| Funktion | Beobachteter lokaler Aufruf | Umsetzung 0.6.0 |
+| Funktion | Beobachteter lokaler Aufruf | Umsetzung 0.6.1 |
 | --- | --- | --- |
 | Gerätesuche | GET `/devices`, mDNS | vorhanden |
 | Koppeln | POST Gerätepfad mit state und Clientdaten | vorhanden; Name Home Assistant, verschlüsselte Speicherung |
@@ -24,7 +24,7 @@ Alle Gerätepfade unten beginnen mit `/devices/{serial}`; Autorisierung lokal mi
 | Not-/Hilfsbetrieb | POST `/aidmode` | on/off bei bekanntem Geräte-Zustand, aktiver Bestätigung und Zustandsprüfung |
 | Firmware übertragen | POST `/firmware`, Multipart-Feld `file` | SWU-Staging, Hash, getrennte Freigabe, Fortschritt, keine Wiederholung |
 | Parameterkatalog | GET `/haystack` | begrenzte Metadatenansicht für TRIO-artige Daten; kein geheimer Rohdatenexport |
-| Anlagenschema | GET `/systemFlow` | verfügbare Antwortdaten; kein nachgebautes Original-Hydraulikbild |
+| Anlagenschema | GET `/systemFlow` | verfügbare Antwortdaten plus schematische Funktionsgruppen aus echten Betriebswerten; kein Original-Hydraulikbild |
 | Offline-/Cloud-Verbindungstoken | GET/POST `/offlinetoken`, `/token` | bewusst ausgeschlossen: Cloud-Kopplung außerhalb des lokalen Bedienumfangs |
 
 ## Firmware-Download
@@ -68,3 +68,22 @@ der optionale öffentliche Firmware-Download benötigt Internet nur auf dem HA-H
 
 Netzwerkänderungen, Notbetrieb und Firmware sind neue, nur gegen Mocks validierte Funktionen.
 Geräte-Fähigkeiten sind Voraussetzungen, aber keine Garantie für eine bestimmte Firmwareversion.
+
+
+## Beim echten lesenden Abgleich bestätigt
+
+Die API verwendet die JSON-Feldnamen `alarms` und `networks` (die gleichnamigen APK-Modellfelder
+heißen intern alarmList/wifiNetworks). Diese SerializedName-Zuordnungen werden in der App beachtet.
+Die konkrete untersuchte NIBE-Firmware liefert für `/systemFlow` HTTP 404 und für die Heiz-/Kühlkurven
+normale Einstellungszeilen, aber keine expliziten x/y-Diagrammpunkte. Die neue Funktionsübersicht
+ordnet sichtbare Betriebswerte schematisch an. Ihre gepunkteten Linien sind Datenzuordnungen,
+keine hydraulischen Leitungen oder behaupteten aktiven Energieflüsse. Fehlt ein Wert, wird er
+nicht erfunden. Rücksprung aus angeklickten Funktionsgruppen bleibt bis nach dem Speichern erhalten.
+Der zusätzliche Parameterkatalog ist durchsuchbar und wird mit 200 Einträgen pro Seite angezeigt.
+Die Metadatenlesung beachtet beliebig lange Trennzeilen aus Bindestrichen gemäß
+[Trio-Format](https://project-haystack.org/doc/docHaystack/Trio). Aktuelle Werte und eingerückte
+Mehrzeilen-Inhalte werden nicht übernommen.
+
+Zusätzlich wird vor Firmwareübertragung die frisch gemeldete `product.firmwareId` gegen den
+Dateinamen abgeglichen. Das erkennt offensichtliche Familienverwechslungen, beweist aber nicht,
+dass eine umbenannte Datei kompatibel oder herstellersigniert wäre. Originaldateien verwenden.

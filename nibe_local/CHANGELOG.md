@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1 — Controller wire formats and schematic operating view
+
+- Honor actual JSON names alarms/networks while accepting the earlier mock aliases.
+- Parse every Trio record delimiter length and provide searchable, paginated parameter metadata without current values or multiline payloads.
+- Keep boolean device capabilities visible while masking credential tokens.
+- Add an interactive, explicitly schematic functional view from local operating values when the original systemFlow endpoint is unavailable.
+- Preserve one-step return navigation from the overview and schematic through menu editing.
+- Check the reported firmware family against the SWU filename before transfer; no signature or complete compatibility claim.
+- Return bounded JSON errors from diagnostic JSON routes.
+- HA app update and real read-only controller status/clock/menu access checked; no real device writes or firmware transfer.
+
 ## 0.6.0 — Extended local HMI and explicit firmware management
 
 - Operating overview, local notifications, device status, clock/time zones and guarded event actions.

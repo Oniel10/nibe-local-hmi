@@ -13,3 +13,5 @@ firmware support from a different REST/MQTT project. A broad compatibility matri
 
 Report controller model, firmware version, HA OS/Core version, CPU architecture and which functions
 work. Do not include serial numbers, credentials or backups. See the compatibility issue template.
+
+0.6.1: the repository app upgrade on amd64 HA OS and read-only device/clock/menu access were checked. No controller setting or firmware was changed. The investigated NIBE controller returns 404 for systemFlow; the app shows clearly marked schematic functional groups from operating values instead.

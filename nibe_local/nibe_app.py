@@ -535,8 +535,11 @@ def trail_list(value):
     return ids
 
 
-def menu_url(base, mid, trail):
-    return base + '/menu/' + str(mid) + ('?trail=' + ','.join(trail) if trail else '')
+def menu_url(base, mid, trail, origin=''):
+    if origin and origin not in dict(hmi.PAGES):
+        raise ValueError('Ungültige Ausgangsansicht.')
+    query = (['trail=' + ','.join(trail)] if trail else []) + (['from=' + origin] if origin else [])
+    return base + '/menu/' + str(mid) + ('?' + '&'.join(query) if query else '')
 
 
 def secret_control(row, mid, base, editable):
@@ -601,12 +604,12 @@ def edit_row(row, mid, base, trail, epoch, index):
             f"<button type='submit'>Speichern</button><span class='field-help'>{e(helper)}</span></span></form>")
 
 
-def editable_menu(mid, menu, base='', trail=None):
+def editable_menu(mid, menu, base='', trail=None, origin=''):
     trail = trail or []
     e = html.escape
     name = web.clean((menu.get('name') or {}).get('text')) or 'Menü ' + str(mid)
     number_text = str(menu.get('number') or '')
-    back = menu_url(base, trail[-1], trail[:-1]) if trail else base + '/menu/0'
+    back = menu_url(base, trail[-1], trail[:-1], origin) if trail else base + '/hmi/' + origin if origin else base + '/menu/0'
     parts = [f"<nav class='menu-nav'><a class='button' href='{back}' aria-label='Eine Menüebene zurück'>← Zurück</a>"
              f"<a href='{base}/hmi/overview'>Übersicht</a><a href='{base}/menu/0'>Hauptmenü</a><a href='{base}/setup'>Verbindung</a></nav>",
              f"<h1>{e(name)} <span class=num>{e(number_text)}</span></h1>"]
@@ -645,7 +648,7 @@ def editable_menu(mid, menu, base='', trail=None):
             except (ValueError, TypeError):
                 continue
             child_trail = (trail + [str(mid)])[-32:]
-            url = menu_url(base, target, child_trail)
+            url = menu_url(base, target, child_trail, origin)
             num = e(str(row.get('number') or ''))
             parts.append(f"<a class=row href='{url}'><span>{num + ' ' if num else ''}{label}</span></a>")
             continue
@@ -668,10 +671,13 @@ def editable_menu(mid, menu, base='', trail=None):
         parts.append(f"<div class=row><span>{label}</span><span class=v>{e(str(val))}</span></div>")
     if rows:
         parts.append('</div>')
-    parts.append(f"<p><a href='{menu_url(base, mid, trail)}'>Werte aktualisieren</a></p>")
+    parts.append(f"<p><a href='{menu_url(base, mid, trail, origin)}'>Werte aktualisieren</a></p>")
     parts.append(f"<p role='status' aria-live='polite' id='ui-status'></p><div id='ui-context' data-base='{base}' data-csrf='{CSRF}' hidden></div>")
     parts.append(f"<script defer src='{base}/static/app.js'></script>")
-    return web.page(name, ''.join(parts)).replace('<meta http-equiv=refresh content=30>', '')
+    body = ''.join(parts)
+    if origin:
+        body = body.replace(hidden('menu', mid), hidden('menu', mid) + hidden('origin', origin))
+    return web.page(name, body).replace('<meta http-equiv=refresh content=30>', '')
 
 
 web.render_menu = editable_menu
@@ -684,10 +690,12 @@ def handle_write(handler, path, form, base):
         return handler._send(400, 'Ungültiges Menü.')
     try:
         trail = trail_list(form.get('trail', [''])[0])
+        origin = form.get('origin', [''])[0]
+        menu_url(base, mid, trail, origin)  # Validate the same-origin return target before any mutation.
     except ValueError:
         return handler._send(400, 'Ungültiger Navigationspfad.')
     def error(code, text):
-        body = '<p role=alert>' + html.escape(text) + '</p>' + f"<p><a href='{menu_url(base, mid, trail)}'>Zurück zum Menü</a></p>"
+        body = '<p role=alert>' + html.escape(text) + '</p>' + f"<p><a href='{menu_url(base, mid, trail, origin)}'>Zurück zum Menü</a></p>"
         return handler._send(code, web.page('Änderung nicht ausgeführt', body))
     if path != '/write/lock' and hmi.firmware.JOB.get('state') == 'running' and hmi.firmware.JOB.get('operation') == 'upload':
         return error(423, 'Während der Firmwareübertragung sind weitere Geräteänderungen gesperrt.')
@@ -726,7 +734,7 @@ def handle_write(handler, path, form, base):
                 return error(400, str(exc))
             except web.WpError as exc:
                 return error(502, exc.msg + ' Änderung nicht bestätigt. Vor einem erneuten Versuch den WP-Wert prüfen.')
-    destination = menu_url(base, mid, trail)
+    destination = menu_url(base, mid, trail, origin)
     return_page = form.get('return_page', [''])[0]
     if path in ('/write/lock', '/write/unlock') and return_page in dict(hmi.PAGES):
         destination = base + '/hmi/' + return_page
@@ -759,8 +767,10 @@ class Handler(web.H):
             try:
                 query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query, max_num_fields=4)
                 trail = trail_list(query.get('trail', [''])[0])
+                origin = query.get('from', [''])[0]
+                menu_url(base, match.group(1), trail, origin)
                 menu = get_menu(match.group(1))
-                return self._send(200, editable_menu(match.group(1), menu, base, trail))
+                return self._send(200, editable_menu(match.group(1), menu, base, trail, origin))
             except ValueError:
                 return self._send(400, 'Ungültiger Navigationspfad.')
             except web.WpError as exc:
@@ -868,7 +878,7 @@ def main():
     except Exception:
         raise SystemExit('Kopplung konnte nicht geladen werden. Schluessel und Datensicherung pruefen; Daten bleiben erhalten.') from None
     threading.Thread(target=discover, daemon=True).start()
-    print('NIBE Local HMI 0.6.0: Ingress auf Port 8099, Änderungen gesperrt.')
+    print('NIBE Local HMI 0.6.1: Ingress auf Port 8099, Änderungen gesperrt.')
     ThreadingHTTPServer(('0.0.0.0', 8099), Handler).serve_forever()
 
 

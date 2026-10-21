@@ -32,7 +32,7 @@ def check(name, value):
 SN = '00000000000000'
 TOKEN = 'mock-device-token-private'
 SECRET = 'MockPasswordNeverRender123'
-device = {'product': {'name': 'S-regler Test'}, 'pairingState': 'success', 'aidMode': 'off',
+device = {'product': {'name': 'S-regler Test', 'firmwareId': 'mock'}, 'pairingState': 'success', 'aidMode': 'off',
           'features': {'fwUpdate': True, 'wifiNetworks': True, 'cellular': True}, 'offlineToken': TOKEN}
 clock = {'automaticUpdate': 0, 'dateTimeLocal': '2026-10-21T10:00:00', 'dateTimeUTC': '2026-10-21T08:00:00',
          'region': 'Europe', 'timezone': 'Vienna', 'timeFormat': '24hr'}
@@ -48,6 +48,7 @@ firmware_response = 204
 upload_received = threading.Event()
 upload_release = threading.Event()
 block_upload = False
+many_catalog = False
 
 def swu_bytes():
     data = b'software = { version = "mock"; };'
@@ -71,9 +72,14 @@ class Mock(BaseHTTPRequestHandler):
         if suffix == '/notifications': return self.reply(200, alarms)
         if suffix == '/datetime': return self.reply(200, clock)
         if suffix == '/timezones': return self.reply(200, {'Europe': ['Vienna', 'Berlin']})
-        if suffix == '/wifi-networks': return self.reply(200, {'wifiNetworks': [{'ssid': '<b>Mock WLAN</b>', 'auth': 'psk', 'rssi': -50}]})
+        if suffix == '/wifi-networks': return self.reply(200, {'networks': [{'ssid': '<b>Mock WLAN</b>', 'auth': 'psk', 'rssi': -50}]})
         if suffix == '/systemFlow': return self.reply(404, {'secret': SECRET})
         if suffix == '/points/10': return self.reply(200, {'10':205})
+        if suffix == '/haystack':
+            raw=('id: @1001\ndis: "Temperature"\nunit: "°C"\nminVal: 0\nmaxVal: 100\nwritable\ncurVal: '+SECRET+'\n-\nid: @1002\ndis: "Voltage"\nsummary:\n  dis: '+SECRET+'\nunit: "V"\n----\nid: @1003\ndis: "Other"\n').encode()
+            if many_catalog:
+                raw='\n-\n'.join('id: @%d\ndis: "Synthetic %d"' % (i,i) for i in range(2001,2202)).encode()
+            self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
         if suffix == '/menuchain/7': return self.reply(200, {'id': 7, 'name': {'text': 'Assistent'}, 'chain': [{'menuId': 50, 'visible': True}, {'menuId': 999, 'visible': False}]})
         if suffix in ('/menu/50', '/menu/40'): return self.reply(200, menu)
         if suffix == '/menu/38': return self.reply(200, {'rows': []})
@@ -137,8 +143,23 @@ with tempfile.TemporaryDirectory() as directory:
             response = request('/hmi/' + view)
             check('View ' + view + ' accessible', response[0] == 200)
             check('View ' + view + ' has no credential leak', TOKEN.encode() not in response[2] and SECRET.encode() not in response[2])
-        check('Unavailable system flow handled without fabricated graphic', request('/hmi/flow')[0] == 200 and b'<svg' not in request('/hmi/flow')[2])
+        check('Unavailable system flow falls back to explicitly schematic operating groups', request('/hmi/flow')[0] == 200 and b'<svg' in request('/hmi/flow')[2] and b'keinen hydraulischen Rohrverlauf' in request('/hmi/flow')[2])
+        check('Schematic uses actual scaled fixture readings', 'Rücklauf: 20,5' in request('/hmi/flow')[2].decode())
+        check('Unavailable diagnostic API returns bounded JSON rather than an HTML form', request('/hmi/api/flow')[0] == 502 and list(json.loads(request('/hmi/api/flow')[2])) == ['error'])
         check('Alarm markup escaped', b'&lt;script&gt;' in request('/hmi/alarms')[2])
+        alarms['alarms']=alarms.pop('alarmList')
+        check('Actual wire alias alarms supported', b'&lt;script&gt;' in request('/hmi/alarms')[2])
+        check('Actual wire alias networks supported and escaped', b'&lt;b&gt;Mock WLAN&lt;/b&gt;' in request('/hmi/network')[2])
+        catalog=request('/hmi/parameters')
+        check('All Trio record separator lengths accepted and catalog is searchable', catalog[0] == 200 and b'3 Treffer aus 3 Katalogeintr' in catalog[2] and b'1001' in catalog[2] and b'1003' in catalog[2])
+        check('Catalog omits current values and multiline payloads', SECRET.encode() not in catalog[2])
+        selected=request('/hmi/parameters?q=Temperature')
+        check('Catalog search filters by metadata', b'1 Treffer aus 3' in selected[2] and b'1002' not in selected[2])
+        many_catalog=True
+        second=request('/hmi/parameters?p=2')
+        check('Catalog pagination retains entries beyond the first page', b'201 Treffer aus 201' in second[2] and b'2201' in second[2] and b'2001' not in second[2])
+        many_catalog=False
+        check('Boolean token capability stays visible but secret tokens masked', hmi.safe({'features':{'offlineToken':True},'token':TOKEN}) == {'features':{'offlineToken':True},'token':'********'})
         check('Root opens overview', request('/')[1]['Location'].endswith('/hmi/overview'))
         check('No mutation from view reads', not writes)
         check('Unknown API route not proxied', request('/hmi/api/token')[0] == 404)
@@ -146,6 +167,8 @@ with tempfile.TemporaryDirectory() as directory:
         check('Nested menu password redacted', SECRET.encode() not in request('/api/menu/50')[2])
         check('Full diagnostic menu also redacted', SECRET.encode() not in request('/hmi/api/menu/50')[2])
         check('Single point requires menu context', request('/hmi/point?menu=50&parameter=10')[0] == 200)
+        check('Back from a graphical group returns to the graph', b"href='/api/hassio_ingress/test/hmi/flow'" in request('/menu/50?from=flow')[2])
+        check('Arbitrary return URL rejected', request('/menu/50?from=https://example.invalid')[0] == 400)
         check('Secret point cannot bypass reveal control', request('/hmi/point?menu=50&parameter=61601')[0] == 400)
         check('Default lock blocks events', post('event', menu='50', event='99', expected=hmi.signature(event))[0] == 403 and not writes)
         check('CSRF blocks new actions', request('/hmi/action', 'POST', {'operation':'event'})[0] == 403)
@@ -162,6 +185,7 @@ with tempfile.TemporaryDirectory() as directory:
         event['enabled'] = False
         check('Freshly disabled event rejected', post('event', menu='50', event='99', expected=hmi.signature(event))[0] == 400 and not writes)
         event['enabled'] = True
+        check('Invalid event return path rejected before the device action', post('event',menu='50',event='99',expected=hmi.signature(event),origin='https://example.invalid')[0] == 400 and not writes)
         check('Event POST exact path, no invented body', post('event',menu='50',event='99',expected=hmi.signature(event))[0] == 303 and writes[-1][:3] == ('POST','/devices/'+SN+'/events/99',b''))
         n = len(writes)
         check('Meldungen changed since form rejected', post('notifications-clear', expected='stale')[0] == 400 and len(writes) == n)
@@ -224,6 +248,9 @@ with tempfile.TemporaryDirectory() as directory:
         device['features']['fwUpdate']=False
         denied(lambda:firmware.upload(app,meta['sha256'],app.WRITE_EPOCH),'Fresh firmware capability required')
         device['features']['fwUpdate']=True
+        device['product']['firmwareId']='other-family'
+        denied(lambda:firmware.upload(app,meta['sha256'],app.WRITE_EPOCH),'Firmware from a different reported family rejected')
+        device['product']['firmwareId']='mock'
         firmware.upload(app,meta['sha256'],app.WRITE_EPOCH)
         sent = writes[-1]
         check('Firmware multipart POST uses local endpoint and file part', sent[0] == 'POST' and sent[1].endswith('/firmware') and b'name="file"' in sent[2] and payload in sent[2])

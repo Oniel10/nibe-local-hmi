@@ -97,6 +97,7 @@ def visible_rows(menu):
 
 
 CSS = """
+.catalog{overflow-x:auto;margin:1rem 0}.catalog table{border-collapse:collapse;width:100%;font-size:.85rem}.catalog th,.catalog td{padding:.5rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}.catalog td{overflow-wrap:anywhere}.catalog td:nth-child(2){min-width:11rem}
 a{color:var(--acc)}input::file-selector-button{font:inherit;border:1px solid var(--line);border-radius:5px;background:var(--card);color:var(--fg);padding:.3rem .5rem;margin-right:.5rem}
 .metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem}.metric{padding:1rem;display:flex;flex-direction:column;color:var(--fg);text-decoration:none}.metric strong{font-size:1.5rem;margin-top:.4rem}.metric span{color:var(--mut)}.hmi-form fieldset{border:0;padding:.5rem 0;display:flex;flex-direction:column;gap:.7rem;min-width:0}.hmi-form label{display:block}.hmi-form .ack{font-size:.9rem;max-width:42rem}.hmi-form input[type=checkbox]{width:auto}.hmi-form fieldset:disabled{opacity:.55}.api-data{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.8rem;padding:1rem}.hash{overflow-wrap:anywhere;font-size:.8rem}figure{margin:1rem}svg{width:100%;height:auto}.row form{max-width:100%}
 button,.button,input,select{font:inherit}button,.button{border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:.45rem .7rem;border-radius:7px;cursor:pointer;text-decoration:none}button:hover,.button:hover{border-color:var(--acc)}

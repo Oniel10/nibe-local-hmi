@@ -4,13 +4,15 @@ A local menu interface for compatible NIBE controllers, running as a Home Assist
 Browse the controller's own menu tree, view values, and change supported settings directly
 in their menu rows after explicitly unlocking writes.
 
-**Experimental community project · version 0.6.0 · free non-commercial use of unmodified versions only; see LICENSE**
+**Experimental community project · version 0.6.1 · free non-commercial use of unmodified versions only; see LICENSE**
 
 [![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FOniel10%2Fnibe-local-hmi)
 
 [Deutsche Anleitung](docs/README.de.md) · [Setup and limitations](nibe_local/DOCS.md) · [Security model](SECURITY.md)
 
 ## Preview
+
+![Synthetic schematic operating groups](docs/images/flow-demo.png)
 
 ![Synthetic operating overview](docs/images/overview-demo.png)
 
@@ -24,6 +26,7 @@ The preview uses synthetic values; no customer installation is shown.
 - Home Assistant Ingress, HA login, optional sidebar entry and admin-only access.
 - Menu navigation with a one-level Back link, help text, units and selection labels.
 - Operating overview with controller values, device status and direct operating-info links.
+- Interactive schematic operating groups using actual controller values: source, heat pump, heating, hot water and cooling when reported.
 - Local notifications, acknowledged event actions, date/time/time zones and menu assistants.
 - Local WLAN scanning/configuration (open, PSK and IEEE 802.1X) and supported cellular/aid mode controls.
 - Inline numeric, selection, Boolean, time and supported text editors.
