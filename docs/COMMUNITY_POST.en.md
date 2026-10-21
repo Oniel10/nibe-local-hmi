@@ -18,6 +18,9 @@ supported settings, without maintaining a separate register map for each menu sc
 - Keeps changes locked by default and after every restart. Unlocking requires an active risk acknowledgement.
 - Checks controller metadata, ranges and step sizes before writing.
 - Saves pairing credentials using AES-256-GCM encryption.
+- Adds local operating values, notifications, clock/time zones and acknowledged device actions.
+- Provides local network settings and a separately confirmed firmware transfer workflow.
+- Can explicitly download S-regler firmware from the public NIBE Austria site without a cloud login.
 
 ## Installation
 
@@ -38,8 +41,11 @@ Host networking is used for discovery, and port 8099 must be free. Controller TL
 are currently not verified, so please use a trusted LAN. The encryption key is stored locally
 for unattended restart; a full backup containing both key and ciphertext can decrypt the token.
 
-The app does not create MQTT entities. Schedules, events and special controller screens are not
-yet implemented. Interface controls are currently German; menu labels come from the controller.
+The app does not create MQTT entities. Graphical schedules, arbitrary custom screens and the original
+hydraulic drawing are not fully implemented. The local function matrix documents the precise gaps.
+New controller writes and firmware transfer are mock-tested; no real firmware was flashed for validation.
+Firmware download requires internet, while controller operation/transfer remains local. Interface controls
+are currently German; menu labels come from the controller.
 
 This project was developed with AI assistance. It is independent of NIBE and is shared for free non-commercial use of unmodified versions only; see LICENSE.
 

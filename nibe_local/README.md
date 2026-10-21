@@ -15,3 +15,5 @@ See the Documentation tab for setup and supported features. This app does not pu
 entities. UI controls are currently German; controller menu labels use its own language.
 
 [Project and issues](https://github.com/Oniel10/nibe-local-hmi) · free non-commercial use of unmodified versions only; see LICENSE.
+
+Version 0.6.0 adds local operating views, notifications, clock, network controls and explicitly confirmed firmware download/staging/transfer. Graphical custom screens are not complete; see the repository local API matrix.

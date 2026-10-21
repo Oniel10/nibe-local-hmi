@@ -18,3 +18,15 @@ No email address or guaranteed response time is declared.
 
 Only the newest experimental release is intended to receive fixes. Updating a container alone
 cannot reverse settings changed at the controller. Keep backups and verify controller behavior.
+
+
+Firmware management: an explicitly requested download uses verified public HTTPS to www.nibe.at;
+no controller token, user cloud account or cookies are sent there. Redirects and arbitrary download
+hosts are rejected. Downloads/SWU files are bounded to 512 MiB, archive paths are never extracted,
+and files require a CPIO sw-description header. SHA-256 detects staging changes, not authenticity
+or model compatibility. Firmware transfer is separately acknowledged, requires an unlocked current
+write epoch and a fresh device capability, and is never retried automatically. Transfer success is
+not proof of installation success. Hardware flashing has not been tested by the maintainer.
+Firmware staging/export is allowed while settings are locked because it does not mutate the controller.
+Staged firmware consumes app storage and may increase backup size. Network and firmware operations
+can interrupt access; recovery must be performed at the controller if needed.

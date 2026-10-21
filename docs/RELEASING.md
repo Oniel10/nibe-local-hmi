@@ -10,7 +10,7 @@
 8. Scan the repository and release ZIP for customer data, tokens, keys, APKs and deployment notes.
 9. Keep VERSION, nibe_local/config.yaml, startup version and Docker labels in sync.
 10. Enable Issues, useful topic tags and private vulnerability reporting in GitHub settings.
-11. Create a release tag `v0.5.0` after review. Do not move published version tags.
+11. Create a release tag matching VERSION after review. Do not move published version tags.
 12. Verify the repository URL and My Home Assistant badge, then publish the reviewed community draft.
 
 A public repository provides the normal HA install/update path. No container registry account is

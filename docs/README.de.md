@@ -33,3 +33,14 @@ Die Menübezeichnungen kommen von der WP; die Bedienelemente sind derzeit deutsc
 Unabhängiges Projekt ohne Verbindung zu NIBE; nur kostenlose, nichtkommerzielle Nutzung unveränderter Versionen; siehe LICENSE.
 
 Lizenz: kostenlose, nichtkommerzielle Nutzung unveränderter Versionen. Verkauf, kommerzielle Nutzung und eigene veränderte Versionen benötigen eine schriftliche Erlaubnis. Kein Open Source. Öffentliche GitHub-Kopien/Forks und zwingende gesetzliche Rechte bleiben unberührt. Maßgeblich ist [LICENSE](../LICENSE). Diese individuelle Lizenz wurde nicht anwaltlich geprüft.
+
+
+## Neue lokale Ansichten (0.6.0)
+
+Betriebsübersicht, Meldungen, Datum/Uhrzeit, Geräteaktionen, Netzwerk und Firmware sind über
+„Übersicht“ erreichbar. Firmware lässt sich ausdrücklich von der öffentlichen NIBE-Österreich-Seite
+herunterladen oder als vorhandene SWU bereitstellen. Erst ein getrennt bestätigter Vorgang bei
+entsperrten Änderungen überträgt sie lokal zur WP. Die Übertragung ist kein Nachweis für eine
+abgeschlossene Installation; das WP-Display prüfen. Der Download benötigt Internet, kein Cloud-Konto.
+
+Noch keine vollständige PRO-Nachbildung: siehe [Funktionsmatrix und Grenzen](LOCAL_API.md).

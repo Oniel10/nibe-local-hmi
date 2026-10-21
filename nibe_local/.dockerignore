@@ -4,4 +4,8 @@
 !nibe_app.py
 !nibe_web.py
 !nibe_ui.js
+!nibe_hmi.py
+!nibe_hmi.js
+!nibe_firmware.py
+!nibe_http.py
 !LICENSE

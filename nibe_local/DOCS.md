@@ -56,8 +56,9 @@ or digits, bounded further by any stricter `maxLen` supplied by the controller. 
 controller constraints may therefore reduce the usable maximum; its own validation also applies.
 An unchanged starting value is required to avoid silently overwriting another change.
 
-Unsupported fields remain read-only. Date/time editing, schedules, event actions, complex
-screens and arbitrary string parameter types are not supported. Do not use this app as a
+Unsupported fields remain read-only. Graphical schedules, unknown complex custom
+screens and arbitrary string parameter types are not fully supported. Local clock editing,
+event actions and second-based time fields are available in 0.6.0. Do not use this app as a
 safety control or as a replacement for professional commissioning.
 
 ## Passwords and encryption
@@ -113,3 +114,46 @@ re-enabled. Keep a suitable backup. A repository installation is separate from a
 installation: it has a new Supervisor app ID and its own data. See `docs/MIGRATION.md` in the repo.
 
 Licensed for free non-commercial use of unmodified versions only; see LICENSE. Experimental independent community project, with no claimed vendor support.
+
+
+## Erweiterte lokale Funktionen ab 0.6.0
+
+Die Startseite zeigt Betriebswerte und Geräteinformationen. Über die Navigation erreichst du
+Meldungen, Anlageninformationen, Datum/Uhrzeit, Netzwerk, Firmware und die Funktionsübersicht.
+Die Meldungsansicht zeigt nur das, was `/notifications` liefert; sie behauptet keinen vollständigen Alarmverlauf.
+Quittieren, Geräteaktionen, Netzwerk-/Uhrzeitänderungen und Assistenten brauchen eine entsperrte
+Schreibfreigabe sowie eine eigene aktive Bestätigung. Nicht angekreuzte Bestätigungen bleiben gesperrt.
+Enterprise-WLAN verlangt die vom Netzwerkadministrator festgelegten EAP-/Phase-2-Werte.
+Netzwerkänderungen können den Zugriff unterbrechen; gegebenenfalls am WP-Display wiederherstellen.
+
+## Firmware herunterladen und lokal übertragen
+
+1. „Firmware“ öffnen. Der öffentliche Download von https://www.nibe.at/software ist optional,
+   wird nur nach einem bewussten Klick gestartet und benötigt Internet, aber kein myUplink-Konto.
+   Die lokale Gerätebedienung benötigt diesen Download nicht. Es gibt keine automatische Update-Abfrage.
+2. Alternativ eine vorhandene, für deinen Regler bestimmte `.swu`-Datei bereitstellen.
+   ZIPs der offiziellen Quelle werden begrenzt gelesen; es wird nur eine eindeutige SWU ausgewählt.
+   Archivpfade werden niemals auf das Dateisystem entpackt. Maximale Datei-/Downloadgröße: 512 MiB.
+3. Name, Größe und SHA-256 prüfen. Die bereitgestellte Datei kann auch auf deinen Rechner
+   heruntergeladen werden. Bis hier wird nichts an der WP geändert.
+4. Änderungen bewusst entsperren. Die zusätzliche Update-Bestätigung aktiv markieren und
+   „Firmware an WP übertragen“ wählen. Die WP muss `features.fwUpdate=true` melden.
+5. Der Fortschritt zeigt nur die Dateiübertragung. Nach Annahme durch die WP den Installationszustand
+   am Gerätebildschirm prüfen. Ein Neustart/Verbindungsabbruch kann zum Update gehören; die App
+   wiederholt nichts automatisch. Während des Updates die Stromversorgung nicht unterbrechen.
+
+Die Datei wird auf CPIO/SWU-Grundstruktur mit erstem Eintrag `sw-description` geprüft. Die
+Prüfsumme erkennt Änderungen nach dem Bereitstellen, bestätigt aber weder Herstellersignatur
+noch Gerätekompatibilität. Der öffentliche S-Regler-Download ist kein automatischer Modellabgleich.
+Es gibt keine automatische Downgrade-/Rollback-Funktion. Derselbe Übertragungsversuch ist innerhalb
+derselben Schreibfreigabe gesperrt; vor einem neuen Versuch WP-Zustand prüfen und bewusst neu freigeben.
+Bereitgestellte Firmware liegt unter `/data/firmware`, unverschlüsselt (sie ist kein Zugangstoken),
+mit beschränkten Dateirechten. Schlüssel und Kopplungsdaten bleiben unverändert verschlüsselt.
+Beim Staging oder Download bleibt die alte gültige Datei erhalten, falls die neue Übertragung ungültig ist.
+„Datei aus der App entfernen“ gibt den Speicher wieder frei. Während einer Übertragung App und HA
+nicht neu starten. Ingress-Streaming ist für große Dateien eingeschaltet; kleine Formulare und
+große Uploads werden beide begrenzt und auf eindeutige Nachrichtenlängen geprüft.
+
+Das originale Hydraulikbild und unbekannte grafische Zeitpläne sind noch keine vollständige
+PRO-Nachbildung. Die App zeigt verfügbare Anlagen-/Custom-Daten transparent und erfindet keine
+hydraulischen Verbindungen. Einzelheiten: `docs/LOCAL_API.md` im Projekt-Repository.

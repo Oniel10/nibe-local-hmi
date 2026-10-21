@@ -17,6 +17,9 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import nibe_web as web
+import nibe_hmi as hmi
+import nibe_http
+import sys
 
 SERVICE = '_nibejpi-restapi._tcp.local.'
 AAD = b'NIBE-Local:credentials:v1'
@@ -138,7 +141,7 @@ def serial_number(value):
     return value
 
 
-def api(host, port, path, token=None, body=None, method=None):
+def api(host, port, path, token=None, body=None, method=None, raw=False):
     """No system proxy, no redirects, bounded response, no upstream body in errors."""
     url = 'https://%s:%d%s' % (local_host(host), int(port), path)
     headers = {'Accept': 'application/json'}
@@ -156,10 +159,12 @@ def api(host, port, path, token=None, body=None, method=None):
     try:
         with API_LOCK:
             with opener.open(req, timeout=15) as r:
-                raw = r.read(2 * 1024 * 1024 + 1)
-        if len(raw) > 2 * 1024 * 1024:
+                response_bytes = r.read(2 * 1024 * 1024 + 1)
+        if len(response_bytes) > 2 * 1024 * 1024:
             raise ValueError
-        return json.loads(raw) if raw.strip() else None
+        if raw:
+            return response_bytes
+        return json.loads(response_bytes) if response_bytes.strip() else None
     except urllib.error.HTTPError as exc:
         code = exc.code
         exc.close()
@@ -376,7 +381,7 @@ def rules(row):
         raise ValueError('Dieses Feld ist von der WP deaktiviert.')
     if md.get('isWritable') is not True:
         raise ValueError('Dieser Wert ist nicht schreibbar.')
-    if row.get('type') not in ('uinumerical', 'uislider', 'uiboolean', 'uidropdown', 'uioptiongroup', 'uisetting'):
+    if row.get('type') not in ('uinumerical', 'uislider', 'uiboolean', 'uidropdown', 'uioptiongroup', 'uisetting', 'uitimesetting'):
         raise ValueError('Dieser Eingabetyp wird noch nicht unterstützt.')
     value = row.get('value') or {}
     if not isinstance(value, dict) or value.get('isOk') is False or not isinstance(value.get('integerValue'), int):
@@ -389,7 +394,7 @@ def rules(row):
         raise ValueError('Grenzen oder Schrittweite fehlen.')
     options = row.get('options') or []
     if options:
-        allowed = {number(o.get('value')) for o in options}
+        allowed = {number(o.get('value')) for o in options if o.get('enabled') is not False and o.get('visible') is not False and not o.get('hideLocal')}
     elif row.get('type') == 'uiboolean':
         allowed = {Decimal(0), Decimal(1)}
     else:
@@ -400,6 +405,14 @@ def rules(row):
 def raw_value(row, entered):
     div, lo, hi, step, allowed = rules(row)
     text = str(entered).strip()
+    if row.get('type') == 'uitimesetting':
+        if div != 1 or not re.fullmatch(r'\d\d:\d\d(?::\d\d)?', text):
+            raise ValueError('Bitte eine gültige Uhrzeit eingeben.')
+        components = [int(v) for v in text.split(':')]
+        hour, minute, second = components + ([0] if len(components) == 2 else [])
+        if hour > 23 or minute > 59 or second > 59:
+            raise ValueError('Ungültige Uhrzeit.')
+        text = str(hour * 3600 + minute * 60 + second)
     if not re.fullmatch(r'-?\d{1,18}(?:[.,]\d{1,9})?', text):
         raise ValueError('Bitte eine gültige Zahl eingeben.')
     raw = number(text.replace(',', '.')) * div
@@ -562,7 +575,13 @@ def edit_row(row, mid, base, trail, epoch, index):
     else:
         div, lo, hi, step, allowed = rules(row)
         current = number(row['value']['integerValue']) / div
-        if allowed is not None:
+        if row.get('type') == 'uitimesetting':
+            if div != 1 or not 0 <= current <= 86399:
+                raise ValueError('Unbekanntes Uhrzeitformat.')
+            seconds = int(current)
+            timestamp = '%02d:%02d:%02d' % (seconds // 3600, seconds // 60 % 60, seconds % 60)
+            control = f"<input type='time' name='value' value='{timestamp}' step='{step}' required aria-label='{e(web.label(row), quote=True)}'>"
+        elif allowed is not None:
             options = []
             for raw in sorted(allowed):
                 title = next((web.clean((o.get('text') or {}).get('text')) for o in row.get('options') or [] if number(o.get('value')) == raw), '')
@@ -589,10 +608,11 @@ def editable_menu(mid, menu, base='', trail=None):
     number_text = str(menu.get('number') or '')
     back = menu_url(base, trail[-1], trail[:-1]) if trail else base + '/menu/0'
     parts = [f"<nav class='menu-nav'><a class='button' href='{back}' aria-label='Eine Menüebene zurück'>← Zurück</a>"
-             f"<a href='{base}/menu/0'>Hauptmenü</a><a href='{base}/setup'>Verbindung</a></nav>",
+             f"<a href='{base}/hmi/overview'>Übersicht</a><a href='{base}/menu/0'>Hauptmenü</a><a href='{base}/setup'>Verbindung</a></nav>",
              f"<h1>{e(name)} <span class=num>{e(number_text)}</span></h1>"]
     panel = lock_panel(base, mid).replace(hidden('menu', mid), hidden('menu', mid) + hidden('trail', ','.join(trail)))
     parts.append(panel)
+    parts.append(hmi.menu_extra(mid, menu, base, trail))
     helptext = web.clean((menu.get('help') or {}).get('text'))
     if helptext:
         parts.append('<details><summary>Hilfe</summary>' + e(helptext).replace('\n','<br>') + '</details>')
@@ -607,6 +627,17 @@ def editable_menu(mid, menu, base='', trail=None):
         kind, label = row.get('type'), e(web.label(row))
         if kind == 'uiheader':
             parts.append(f'<div class=hdr>{label}</div>')
+            continue
+        if kind == 'uimenuchain' or row.get('isMenuChain'):
+            parts.append(hmi.chain_row(row, mid, base, trail))
+            continue
+        if kind == 'uievent':
+            action = hmi.event_row(row, mid, base, trail)
+            if action:
+                parts.append(action)
+                continue
+        if kind in ('uichart', 'uichartintseries', 'uichartstringseries'):
+            parts.append(hmi.chart(row))
             continue
         if kind == 'uilink' and not row.get('isMenuChain'):
             try:
@@ -625,7 +656,7 @@ def editable_menu(mid, menu, base='', trail=None):
             except (ValueError, KeyError, TypeError):
                 pass
         if kind in ('uievent','uiaction'):
-            val = 'Aktion noch nicht unterstützt'
+            val = 'Kein eindeutig unterstützter Aktionsaufruf verfügbar'
         elif is_secret(row) and row.get('parameterId') is not None:
             val = secret_control(row, mid, base, False)
             parts.append(f"<div class=row><span>{label}</span><span class=v>{val}</span></div>")
@@ -658,6 +689,8 @@ def handle_write(handler, path, form, base):
     def error(code, text):
         body = '<p role=alert>' + html.escape(text) + '</p>' + f"<p><a href='{menu_url(base, mid, trail)}'>Zurück zum Menü</a></p>"
         return handler._send(code, web.page('Änderung nicht ausgeführt', body))
+    if path != '/write/lock' and hmi.firmware.JOB.get('state') == 'running' and hmi.firmware.JOB.get('operation') == 'upload':
+        return error(423, 'Während der Firmwareübertragung sind weitere Geräteänderungen gesperrt.')
     with WRITE_LOCK:
         if not secrets.compare_digest(form.get('epoch', [''])[0], WRITE_EPOCH):
             return error(409, 'Die Freigabe wurde zwischenzeitlich geändert. Seite neu laden.')
@@ -693,7 +726,11 @@ def handle_write(handler, path, form, base):
                 return error(400, str(exc))
             except web.WpError as exc:
                 return error(502, exc.msg + ' Änderung nicht bestätigt. Vor einem erneuten Versuch den WP-Wert prüfen.')
-    return handler._send(303, '', extra={'Location': menu_url(base, mid, trail)})
+    destination = menu_url(base, mid, trail)
+    return_page = form.get('return_page', [''])[0]
+    if path in ('/write/lock', '/write/unlock') and return_page in dict(hmi.PAGES):
+        destination = base + '/hmi/' + return_page
+    return handler._send(303, '', extra={'Location': destination})
 
 
 class Handler(web.H):
@@ -709,6 +746,12 @@ class Handler(web.H):
             return self._send(403, web.page('Verboten', '<p>Nur ueber Home Assistant erreichbar.</p>'))
         path = self.path.split('?', 1)[0]
         base = self._base()
+        if path == '/static/hmi.js':
+            return self._send(200, Path(__file__).with_name('nibe_hmi.js').read_text(encoding='utf-8'), 'application/javascript; charset=utf-8')
+        if hmi.route_get(self, path, base):
+            return
+        if path == '/' and SESSION:
+            return self._send(302, '', extra={'Location': base + '/hmi/overview'})
         if path == '/static/app.js':
             return self._send(200, Path(__file__).with_name('nibe_ui.js').read_text(encoding='utf-8'), 'application/javascript; charset=utf-8')
         match = re.fullmatch(r'/menu/(\d{1,9})', path)
@@ -734,23 +777,32 @@ class Handler(web.H):
             return self._send(403, 'Nur ueber Home Assistant erreichbar.')
         base = self._base()
         path = self.path.split('?', 1)[0]
-        if path not in ('/setup/discover', '/setup/probe', '/setup/pair', '/setup/check', '/write/lock', '/write/unlock', '/write/value', '/secret/reveal'):
+        if path == '/hmi/firmware/stage':
+            return hmi.stage_request(self)
+        if path not in ('/setup/discover', '/setup/probe', '/setup/pair', '/setup/check', '/write/lock', '/write/unlock', '/write/value', '/secret/reveal', '/hmi/action'):
             return self._send(405, 'Dieser Endpunkt erlaubt keine Änderungen.', extra={'Allow': 'GET, HEAD'})
-        if self.headers.get('Transfer-Encoding'):
-            return self._send(400, 'Ungueltige Anfrage.')
         try:
-            length = int(self.headers.get('Content-Length', '0'))
-            if not 0 < length <= 4096:
-                raise ValueError
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/x-www-form-urlencoded':
                 raise ValueError
-            form = urllib.parse.parse_qs(self.rfile.read(length).decode('utf-8'), keep_blank_values=True, max_num_fields=9)
+            self.connection.settimeout(30)
+            form = urllib.parse.parse_qs(nibe_http.form_bytes(self, 16384).decode('utf-8'), keep_blank_values=True, max_num_fields=20)
+            if any(len(values) != 1 for values in form.values()):
+                raise ValueError
             csrf = form.get('csrf', [''])[0]
             if not secrets.compare_digest(csrf, CSRF):
                 return self._send(403, 'Formular abgelaufen. Seite neu laden.')
         except Exception:
             return self._send(400, 'Ungueltiges Formular.')
         try:
+            if path == '/hmi/action':
+                try:
+                    target = hmi.perform(hmi.single(form, 'operation'), form, base)
+                    return self._send(303, '', extra={'Location': target})
+                except (ValueError, PermissionError, web.WpError) as exc:
+                    message = exc.msg if isinstance(exc, web.WpError) else str(exc)
+                    code = 403 if isinstance(exc, PermissionError) else 502 if isinstance(exc, web.WpError) else 400
+                    message += ' Bei einer fehlgeschlagenen Geräteaktion zuerst den WP-Zustand prüfen; es erfolgt keine automatische Wiederholung.'
+                    return self._send(code, hmi.page(base, 'overview', '<p role="alert">' + html.escape(message) + '</p>'))
             if path == '/secret/reveal':
                 mid = form.get('menu', [''])[0]
                 if not re.fullmatch(r'\d{1,9}', mid):
@@ -787,6 +839,9 @@ class Handler(web.H):
         return self._send(303, '', extra={'Location': base + '/setup'})
 
 
+hmi.bind(sys.modules[__name__])
+
+
 def main():
     global STORE, STATUS, WRITES_LOCKED, WRITE_EPOCH
     WRITES_LOCKED = True
@@ -813,7 +868,7 @@ def main():
     except Exception:
         raise SystemExit('Kopplung konnte nicht geladen werden. Schluessel und Datensicherung pruefen; Daten bleiben erhalten.') from None
     threading.Thread(target=discover, daemon=True).start()
-    print('NIBE Local HMI 0.5.0: Ingress auf Port 8099, Änderungen gesperrt.')
+    print('NIBE Local HMI 0.6.0: Ingress auf Port 8099, Änderungen gesperrt.')
     ThreadingHTTPServer(('0.0.0.0', 8099), Handler).serve_forever()
 
 

@@ -4,13 +4,15 @@ A local menu interface for compatible NIBE controllers, running as a Home Assist
 Browse the controller's own menu tree, view values, and change supported settings directly
 in their menu rows after explicitly unlocking writes.
 
-**Experimental community project · first public release 0.5.0 · free non-commercial use of unmodified versions only; see LICENSE**
+**Experimental community project · version 0.6.0 · free non-commercial use of unmodified versions only; see LICENSE**
 
 [![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FOniel10%2Fnibe-local-hmi)
 
 [Deutsche Anleitung](docs/README.de.md) · [Setup and limitations](nibe_local/DOCS.md) · [Security model](SECURITY.md)
 
 ## Preview
+
+![Synthetic operating overview](docs/images/overview-demo.png)
 
 ![Synthetic demo of inline menu editing](docs/images/menu-demo.png)
 
@@ -21,7 +23,12 @@ The preview uses synthetic values; no customer installation is shown.
 - Local mDNS discovery and pairing as **Home Assistant**; no token copying.
 - Home Assistant Ingress, HA login, optional sidebar entry and admin-only access.
 - Menu navigation with a one-level Back link, help text, units and selection labels.
-- Inline numeric, selection, Boolean and supported text editors.
+- Operating overview with controller values, device status and direct operating-info links.
+- Local notifications, acknowledged event actions, date/time/time zones and menu assistants.
+- Local WLAN scanning/configuration (open, PSK and IEEE 802.1X) and supported cellular/aid mode controls.
+- Inline numeric, selection, Boolean, time and supported text editors.
+- Explicit firmware download from the public NIBE Austria site, SWU file staging/export and separately confirmed local transfer.
+- Additional parameter catalog and single-point reads with secret masking.
 - Password fields masked by default, with an eye button that explicitly requests the value.
 - Server-side write lock, enabled on startup and every restart; active risk acknowledgement required to unlock.
 - Fresh controller metadata, bounds, step sizes and unchanged-value checks before writing.
@@ -61,7 +68,14 @@ menu labels come from the controller. HA option descriptions are supplied in Eng
   expose both the key and encrypted credentials.
 - The UI lock controls writes through this app only. It does not change the controller's global
   REST read-only setting. Unlocking applies to all open views of this app until relock or restart.
-- Time schedules, date/time screens, action buttons and special controller screens are not implemented.
+- Graphical schedules, arbitrary custom screens and the original hydraulic drawing are not fully implemented.
+  The local system-flow response is displayed when available; no vendor cloud image is fetched.
+  See the [local function matrix](docs/LOCAL_API.md) for exact support and known gaps.
+- Firmware download needs internet to the public NIBE Austria website, without a myUplink account.
+  No firmware is sent to the controller until a separate, unlocked, actively confirmed action.
+  A successful transfer is not proof of completed installation; check the controller display.
+- Firmware format and SHA-256 checks do not establish manufacturer signature or model compatibility.
+  Staged firmware is limited to 512 MiB and is included in app-data backups unless excluded by the host.
 
 [Full documentation](nibe_local/DOCS.md) · [Compatibility reporting](docs/COMPATIBILITY.md) · [Migration from a local install](docs/MIGRATION.md)
 
@@ -71,8 +85,10 @@ menu labels come from the controller. HA option descriptions are supplied in Eng
 python -m pip install -r nibe_local/requirements.txt
 python tests/test_app.py
 python tests/test_ui.py
+python tests/test_hmi.py
 python tests/test_repository.py
 node tests/test_eye.js
+node tests/test_hmi_ui.js
 ```
 
 The GitHub Actions workflow runs offline controller mocks, package checks, the eye-button test,

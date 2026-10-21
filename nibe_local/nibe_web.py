@@ -47,11 +47,12 @@ def wp_menu(mid):
 
 
 def clean(s):
-    return (s or "").replace("­", "").strip()   # weiche Trennstriche entfernen
+    return s.replace("­", "").strip() if isinstance(s, str) else ""
 
 
 def label(row):
-    return clean((row.get("text") or {}).get("text"))
+    value = row.get('text')
+    return clean(value.get('text') if isinstance(value, dict) else value)
 
 
 def fmt_value(row):
@@ -63,6 +64,8 @@ def fmt_value(row):
     iv, sv = v.get("integerValue"), v.get("stringValue")
     if v.get("isOk") is False:
         return "–"
+    if row.get('type') in ('uitimesetting', 'uitime') and isinstance(iv, int) and not isinstance(iv, bool) and 0 <= iv <= 86399:
+        return '%02d:%02d:%02d' % (iv // 3600, iv // 60 % 60, iv % 60)
     for o in row.get("options") or []:
         if o.get("value") == iv:
             return clean((o.get("text") or {}).get("text")) or str(iv)
@@ -81,14 +84,21 @@ def fmt_value(row):
 
 def visible_rows(menu):
     out = []
-    for r in menu.get("rows") or []:
-        if r.get("visible") is False or r.get("hideLocal"):   # wie die App im lokalen Modus
-            continue
-        out.append(r)
+    def visit(rows, depth=0, parent_enabled=True):
+        if depth > 12 or not isinstance(rows, list):
+            return
+        for r in rows:
+            if not isinstance(r, dict) or r.get("visible") is False or r.get("hideLocal"):
+                continue
+            out.append(r if parent_enabled else dict(r, enabled=False))
+            visit(r.get('rows'), depth+1, parent_enabled and r.get('enabled') is not False)
+    visit(menu.get('rows'))
     return out
 
 
 CSS = """
+a{color:var(--acc)}input::file-selector-button{font:inherit;border:1px solid var(--line);border-radius:5px;background:var(--card);color:var(--fg);padding:.3rem .5rem;margin-right:.5rem}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem}.metric{padding:1rem;display:flex;flex-direction:column;color:var(--fg);text-decoration:none}.metric strong{font-size:1.5rem;margin-top:.4rem}.metric span{color:var(--mut)}.hmi-form fieldset{border:0;padding:.5rem 0;display:flex;flex-direction:column;gap:.7rem;min-width:0}.hmi-form label{display:block}.hmi-form .ack{font-size:.9rem;max-width:42rem}.hmi-form input[type=checkbox]{width:auto}.hmi-form fieldset:disabled{opacity:.55}.api-data{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.8rem;padding:1rem}.hash{overflow-wrap:anywhere;font-size:.8rem}figure{margin:1rem}svg{width:100%;height:auto}.row form{max-width:100%}
 button,.button,input,select{font:inherit}button,.button{border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:.45rem .7rem;border-radius:7px;cursor:pointer;text-decoration:none}button:hover,.button:hover{border-color:var(--acc)}
 input,select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:.4rem .55rem;max-width:100%;min-width:0}input[type=number]{width:7rem}input[type=text],input[type=password]{width:15rem}input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .menu-nav{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}.edit-row{margin:0;align-items:center;flex-wrap:wrap}.row-label{flex:1 1 12rem}.row-editor{display:flex;align-items:center;justify-content:flex-end;gap:.5rem;flex:1 1 20rem;flex-wrap:wrap}.field-help{flex-basis:100%;text-align:right;color:var(--mut);font-size:.8rem}.secret-control{display:inline-flex;align-items:center;gap:.3rem;max-width:100%}.eye{padding:.4rem .55rem}.note p{margin:.5rem 0}.edit-row .row-editor select{max-width:15rem}
