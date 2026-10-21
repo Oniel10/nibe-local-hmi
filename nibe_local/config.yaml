@@ -1,6 +1,6 @@
 {
   "name": "NIBE Local HMI",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "slug": "nibe_local",
   "description": "Local NIBE menu interface with pairing, encrypted credentials and protected writes",
   "arch": [

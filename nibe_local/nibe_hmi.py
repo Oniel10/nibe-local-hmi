@@ -315,7 +315,7 @@ def network(base):
     if not isinstance(data, dict):
         data = {}
     if isinstance(data, dict):
-        body += '<h2>WLAN-Netze</h2><p id="wifi-status" role="status" aria-live="polite">WLAN-Suche wird aktualisiert …</p><button type="button" id="wifi-rescan">Erneut suchen</button><div class="card" id="wifi-networks">'
+        body += '<h2>WLAN-Netze</h2><p class="note"><strong>WLAN muss manuell an der Wärmepumpe aktiviert werden.</strong> Öffne am WP-Display Menü 5.2.1 (WLAN), schalte WLAN ein und warte, bis dort Netzwerke erscheinen. Starte anschließend hier die Suche erneut. Die WLAN-Suche in dieser App schaltet WLAN nicht ein.</p><p id="wifi-status" role="status" aria-live="polite">WLAN-Suche wird aktualisiert …</p><button type="button" id="wifi-rescan">Erneut suchen</button><div class="card" id="wifi-networks">'
         networks = data.get('networks', data.get('wifiNetworks', []))
         if not isinstance(networks, list):
             networks = []

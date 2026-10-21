@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3 — Hinweis zur WLAN-Aktivierung
+
+- Direkt bei der WLAN-Suche erklären, dass WLAN zuvor manuell am WP-Display unter Menü 5.2.1 aktiviert werden muss.
+- Die Suche aktiviert WLAN nicht; nach dem Einschalten auf Netzwerke am Display warten und die Suche erneut starten.
+
 ## 0.6.2 — WLAN-Suche und GitHub-Releases
 
 - WLAN-Ergebnisse wiederholt über den bestätigten lokalen GET-Endpunkt abfragen; leere Zwischenantworten beenden die Suche nicht mehr sofort.

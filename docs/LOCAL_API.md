@@ -1,13 +1,13 @@
 # Lokale PRO-Funktionen und Umsetzungsstand
 
-Stand 0.6.2, experimentell. Grundlage: Protokollanalyse von myUplink PRO 1.42,
+Stand 0.6.3, experimentell. Grundlage: Protokollanalyse von myUplink PRO 1.42,
 APK SHA-256 `efe6ee7eae6c7c3f05d808166f950132b202fe39f5001a0dc6a4bc16cde9d306`.
 Die APK sowie dekompilierte Implementierungen und Hersteller-Grafiken werden nicht verteilt.
 Die nachfolgende Liste beschreibt beobachtete Protokollfakten und unsere eigene Umsetzung.
 Es wird weder eine vollständige API-Dokumentation noch Unterstützung durch jede NIBE-Firmware behauptet.
 Alle Gerätepfade unten beginnen mit `/devices/{serial}`; Autorisierung lokal mit `Token`.
 
-| Funktion | Beobachteter lokaler Aufruf | Umsetzung 0.6.2 |
+| Funktion | Beobachteter lokaler Aufruf | Umsetzung 0.6.3 |
 | --- | --- | --- |
 | Gerätesuche | GET `/devices`, mDNS | vorhanden |
 | Koppeln | POST Gerätepfad mit state und Clientdaten | vorhanden; Name Home Assistant, verschlüsselte Speicherung |
