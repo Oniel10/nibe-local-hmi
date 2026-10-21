@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 — WLAN-Suche und GitHub-Releases
+
+- WLAN-Ergebnisse wiederholt über den bestätigten lokalen GET-Endpunkt abfragen; leere Zwischenantworten beenden die Suche nicht mehr sofort.
+- Suchstatus und erneute Suche ohne Verlust der Formulareingaben; vorhandene Ergebnisse bleiben bei leeren Antworten sichtbar.
+- Begrenzte, sequenzielle Abfragen, Abbruch beim Verlassen und klare Verbindungsfehler.
+- GitHub-Releases nach erfolgreichen Tests und beiden Container-Builds automatisch erstellen.
+- Nur mit simulierten WLAN-Antworten geprüft; keine erneute Installation oder Prüfung an einer realen WP.
+
 ## 0.6.1 — Controller wire formats and schematic operating view
 
 - Honor actual JSON names alarms/networks while accepting the earlier mock aliases.

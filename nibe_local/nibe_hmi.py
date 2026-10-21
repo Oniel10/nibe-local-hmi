@@ -312,13 +312,15 @@ def network(base):
     data, error = read_page('network')
     device, device_error = read_page('device')
     body = error + device_error
+    if not isinstance(data, dict):
+        data = {}
     if isinstance(data, dict):
-        body += '<h2>WLAN-Netze</h2><div class="card">'
+        body += '<h2>WLAN-Netze</h2><p id="wifi-status" role="status" aria-live="polite">WLAN-Suche wird aktualisiert …</p><button type="button" id="wifi-rescan">Erneut suchen</button><div class="card" id="wifi-networks">'
         networks = data.get('networks', data.get('wifiNetworks', []))
         if not isinstance(networks, list):
             networks = []
         if not networks:
-            body += '<p class="note">Die WP liefert aktuell keine WLAN-Netze.</p>'
+            body += '<p class="note">Noch keine WLAN-Ergebnisse. Die Suche wird wiederholt.</p>'
         for net in networks[:200]:
             if not isinstance(net, dict):
                 continue

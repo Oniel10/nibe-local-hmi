@@ -878,7 +878,7 @@ def main():
     except Exception:
         raise SystemExit('Kopplung konnte nicht geladen werden. Schluessel und Datensicherung pruefen; Daten bleiben erhalten.') from None
     threading.Thread(target=discover, daemon=True).start()
-    print('NIBE Local HMI 0.6.1: Ingress auf Port 8099, Änderungen gesperrt.')
+    print('NIBE Local HMI 0.6.2: Ingress auf Port 8099, Änderungen gesperrt.')
     ThreadingHTTPServer(('0.0.0.0', 8099), Handler).serve_forever()
 
 

@@ -25,6 +25,7 @@ jobs:
       - run: python tests/test_repository.py
       - run: node tests/test_eye.js
       - run: node tests/test_hmi_ui.js
+      - run: node tests/test_wifi_ui.js
   container:
     runs-on: ubuntu-latest
     strategy:
@@ -45,3 +46,44 @@ jobs:
           tags: nibe-local-hmi:ci
       - name: Verify imports and default lock in image
         run: docker run --rm --platform ${{ matrix.platform }} --entrypoint python nibe-local-hmi:ci -c 'import nibe_app; assert nibe_app.WRITES_LOCKED is True'
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tests, container]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare version and release notes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os, re
+          version = Path('VERSION').read_text().strip()
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version)
+          changelog = Path('nibe_local/CHANGELOG.md').read_text()
+          section = next(s for s in changelog.split('\n## ') if s.startswith(version + ' '))
+          Path('release-notes.md').write_text('## ' + section.split('\n## ')[0].strip() + '\n\nExperimentelle Version. Installation und Aktualisierung erfolgen durch den Nutzer. Kostenlos nur zur nichtkommerziellen Nutzung unveränderter Versionen gemäß LICENSE.\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write('RELEASE_VERSION=' + version + '\n')
+          PY
+      - name: Publish tested source release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+          gh api --paginate "repos/${GH_REPO}/releases" --jq '.[].tag_name' > existing-release-tags.txt
+          if grep -Fxq "$tag" existing-release-tags.txt; then
+            echo "Release already exists; leaving published version unchanged."
+            exit 0
+          fi
+          git archive --format=zip --prefix=nibe-local-hmi/ --output="NIBE-Local-HMI-${RELEASE_VERSION}.zip" HEAD
+          gh release create "$tag" "NIBE-Local-HMI-${RELEASE_VERSION}.zip" --target "$GITHUB_SHA" --title "NIBE Local HMI ${RELEASE_VERSION}" --notes-file release-notes.md --prerelease

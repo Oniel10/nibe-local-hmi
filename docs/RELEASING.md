@@ -15,6 +15,6 @@
 
 A public repository provides the normal HA install/update path. No container registry account is
 required: `config.yaml` omits `image`, so Supervisor builds from source. This repository's workflow
-builds containers for validation only and never pushes images or publishes a release automatically.
+builds containers for validation and never pushes images. After both test versions and both container architectures pass on a main-branch push, it creates an experimental GitHub release matching VERSION, including a source ZIP. Existing releases are left unchanged. Installation and updating Home Assistant remain user actions.
 
 The independent repository app will not overwrite an existing local install. Follow MIGRATION.md.
