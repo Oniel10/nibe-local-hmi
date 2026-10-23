@@ -28,7 +28,7 @@ SERIAL='00000000000000'
 TOKEN='mock-token-never-show'
 fixture={'type':'uinumerical','parameterId':'100','text':{'text':'Temperatur'},'value':{'integerValue':200,'isOk':True},'metadata':{'isWritable':True,'divisor':10,'decimal':1,'minValue':100,'maxValue':300,'change':5,'unit':'°C'}}
 row=json.loads(json.dumps(fixture))
-patches=[];requests=[];pairing='pending';failpatch=False
+patches=[];requests=[];pairing='pending';failpatch=False;failpair=False
 class Mock(BaseHTTPRequestHandler):
     def log_message(self,*a):pass
     def respond(self,code,obj=None):
@@ -45,6 +45,7 @@ class Mock(BaseHTTPRequestHandler):
     def do_POST(self):
         body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         requests.append(('POST',self.path,body))
+        if failpair:return self.respond(503,{})
         state=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)['state'][0]
         return self.respond(200,{'state':state,'token':TOKEN,'clientIdentifier':body['identifier']})
     def do_PATCH(self):
@@ -147,6 +148,26 @@ with tempfile.TemporaryDirectory() as tmp:
         enumrow=dict(boolrow,type='uidropdown',options=[{'value':0,'text':{'text':'Aus'}},{'value':2,'text':{'text':'Heizen'}}],metadata={'isWritable':True,'minValue':0,'maxValue':2,'change':1,'divisor':1})
         try:app.raw_value(enumrow,'1');raise AssertionError('enum')
         except ValueError:check('Nicht angebotener Auswahlwert abgewehrt',True)
+        # Expire the controller token while keeping the app's encrypted session.
+        old_session=dict(app.SESSION);old_blob=app.STORE.cipherfile.read_bytes()
+        TOKEN='mock-replacement-token'
+        check('Expired token status returns false',not app.session_status())
+        check('Expired token status explains renewed pairing','erneut koppeln' in app.STATUS.lower())
+        check('Recovery offered with a saved session',"/setup/repair" in request('/setup')[2])
+        before=sum(x[0]=='POST' for x in requests)
+        check('Renewed pairing requires explicit acknowledgement',post('/setup/repair')[0]==400 and sum(x[0]=='POST' for x in requests)==before)
+        check('Renewed pairing requires CSRF',request('/setup/repair','POST',{'ack':'yes'})[0]==403)
+        app.WRITES_LOCKED=False;old_epoch=app.WRITE_EPOCH
+        failpair=True
+        check('Failed renewed pairing reports failure',post('/setup/repair',ack='yes')[0]==400)
+        check('Failed renewed pairing preserves encrypted credentials',app.SESSION==old_session and app.STORE.cipherfile.read_bytes()==old_blob)
+        check('Renewed pairing locks changes and invalidates old forms',app.WRITES_LOCKED and app.WRITE_EPOCH!=old_epoch)
+        failpair=False;pairing='success'
+        check('Renewed pairing actually sends a new request',post('/setup/repair',ack='yes')[0]==303 and sum(x[0]=='POST' for x in requests)==before+2)
+        check('Replacement token encrypted and active',app.SESSION['token']==TOKEN and app.STORE.load()['token']==TOKEN and TOKEN.encode() not in app.STORE.cipherfile.read_bytes())
+        check('Renewed pairing uses fresh identifier',app.SESSION['identifier']!=old_session['identifier'])
+        check('Replacement session can read menus',request('/menu/711')[0]==200)
+        check('Replacement token absent from setup HTML',TOKEN not in request('/setup')[2])
     finally:
         server.shutdown();server.server_close();mock.shutdown();mock.server_close()
 print('\n'.join(RESULT))

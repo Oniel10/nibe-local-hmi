@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.4 — Erneute Kopplung bei abgewiesenem Token
+
+- Unter Verbindung eine ausdrücklich bestätigte neue Kopplungsanfrage an die gespeicherte WP ermöglichen, auch wenn bereits ein Token gespeichert ist.
+- Bei HTTP 401 auf die erneute Kopplung hinweisen; Netzwerkfehler und andere Ablehnungen nicht als nachgewiesenen Token-Ablauf darstellen.
+- Beim erneuten Koppeln Änderungen sperren und alte Schreibformulare ungültig machen. Neue Kopplungsdaten weiterhin verschlüsselt speichern.
+- Scheitert die Anfrage, bleiben die bisherigen Kopplungsdaten erhalten. Keine automatischen Kopplungs- oder Schreibwiederholungen.
+- Abgewiesenes Token, fehlgeschlagene und erfolgreiche neue Kopplungsanfrage gegen simulierte WP getestet; keine Änderungen an einer realen HA-Installation.
+
 ## 0.6.3 — Hinweis zur WLAN-Aktivierung
 
 - Direkt bei der WLAN-Suche erklären, dass WLAN zuvor manuell am WP-Display unter Menü 5.2.1 aktiviert werden muss.

@@ -168,7 +168,11 @@ def api(host, port, path, token=None, body=None, method=None, raw=False):
     except urllib.error.HTTPError as exc:
         code = exc.code
         exc.close()
-        raise web.WpError(502, 'WP antwortet mit HTTP %d.' % code) from None
+        message = ('Die WP hat das gespeicherte Token abgewiesen (HTTP 401). Unter Verbindung erneut koppeln.'
+                   if code == 401 and token else 'WP antwortet mit HTTP %d.' % code)
+        error = web.WpError(502, message)
+        error.upstream_status = code
+        raise error from None
     except (ValueError, OSError, urllib.error.URLError):
         raise web.WpError(502, 'WP nicht erreichbar oder Antwort ungueltig.') from None
 
@@ -257,9 +261,12 @@ def session_status():
             STATUS = 'Verbunden.' if ready else 'Bitte die Kopplung an der Waermepumpe freigeben. Status: ' + (
                 str(state) if state in ('pending', 'none', 'invalid', 'PENDING', 'NONE', 'INVALID') else 'noch nicht bestaetigt')
         return ready
-    except (web.WpError, ValueError):
+    except (web.WpError, ValueError) as exc:
         with STATE_LOCK:
-            STATUS = 'Verbindung noch nicht bestaetigt. WP und Freigabe pruefen und erneut pruefen.'
+            if getattr(exc, 'upstream_status', None) == 401:
+                STATUS = 'Die WP hat das gespeicherte Token abgewiesen. Bitte erneut koppeln und am WP-Display freigeben.'
+            else:
+                STATUS = 'Verbindung nicht bestätigt. WP und Freigabe prüfen. Falls die Kopplung nicht mehr gültig ist, erneut koppeln.'
         return False
 
 
@@ -271,14 +278,14 @@ def activate(session):
         web._cache.clear()
 
 
-def pair(device):
+def pair(device, replace_session=False):
     global STATUS
     if not PAIR_LOCK.acquire(blocking=False):
         raise ValueError('Eine Kopplung laeuft bereits.')
     try:
         with STATE_LOCK:
-            if SESSION:
-                raise ValueError('Es besteht bereits eine Kopplung. Erst Status pruefen.')
+            if SESSION and not replace_session:
+                raise ValueError('Es besteht bereits eine Kopplung. Unter Verbindung erneut koppeln.')
         # Make sure storage is writable before registering a client on the WP.
         STORE.key(create=True)
         state = secrets.token_hex(16)
@@ -303,6 +310,26 @@ def pair(device):
         session_status()
     finally:
         PAIR_LOCK.release()
+
+
+def repair():
+    """Explicitly request a fresh token; keep the old encrypted record on failure."""
+    global WRITES_LOCKED, WRITE_EPOCH
+    # Serialize against controller writes and another recovery request.
+    if not WRITE_LOCK.acquire(blocking=False):
+        raise ValueError('Ein Vorgang läuft noch. Bitte warten und erneut versuchen.')
+    try:
+        with STATE_LOCK:
+            if not SESSION:
+                raise ValueError('Bitte zuerst ein gefundenes Gerät auswählen.')
+            device = {key: SESSION[key] for key in ('host', 'port', 'serial', 'name') if key in SESSION}
+        WRITES_LOCKED = True
+        WRITE_EPOCH = secrets.token_urlsafe(24)
+        with web._lock:
+            web._cache.clear()
+        pair(device, replace_session=True)
+    finally:
+        WRITE_LOCK.release()
 
 
 def get_menu(mid, fresh=False):
@@ -339,6 +366,8 @@ def setup_page(base, message=''):
     body += '<p>' + e(status) + '</p>'
     if connected:
         body += form('check', '<button>Status pruefen</button>')
+        body += '<h2>Verbindung wiederherstellen</h2><p>Wenn das Token abgewiesen wird oder keine Verbindung mehr möglich ist, fordere hier eine neue Kopplung für die gespeicherte WP an. Eine Freigabe am WP-Display kann erforderlich sein. Änderungen werden dabei gesperrt.</p>'
+        body += form('repair', '<label><input type="checkbox" name="ack" value="yes" required> Ich möchte eine neue Kopplungsanfrage an die gespeicherte WP senden.</label><button>Erneut koppeln</button>')
         body += f"<p><a href='{base}/menu/0'>WP-Menues oeffnen</a></p>"
         body += '<p>Die Kopplung ist intern gespeichert. Das Token wird hier nicht angezeigt.</p>'
     else:
@@ -789,7 +818,7 @@ class Handler(web.H):
         path = self.path.split('?', 1)[0]
         if path == '/hmi/firmware/stage':
             return hmi.stage_request(self)
-        if path not in ('/setup/discover', '/setup/probe', '/setup/pair', '/setup/check', '/write/lock', '/write/unlock', '/write/value', '/secret/reveal', '/hmi/action'):
+        if path not in ('/setup/discover', '/setup/probe', '/setup/pair', '/setup/repair', '/setup/check', '/write/lock', '/write/unlock', '/write/value', '/secret/reveal', '/hmi/action'):
             return self._send(405, 'Dieser Endpunkt erlaubt keine Änderungen.', extra={'Allow': 'GET, HEAD'})
         try:
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/x-www-form-urlencoded':
@@ -834,6 +863,10 @@ class Handler(web.H):
                     raise ValueError('Die WP lieferte keine Seriennummer. Lokale API und Freigabe pruefen.')
                 for device in devices:
                     remember(device)
+            elif path == '/setup/repair':
+                if form.get('ack', [''])[0] != 'yes':
+                    raise ValueError('Bitte die erneute Kopplungsanfrage aktiv bestätigen.')
+                repair()
             elif path == '/setup/pair':
                 with STATE_LOCK:
                     device = DEVICES.get(form.get('device', [''])[0])
@@ -878,7 +911,7 @@ def main():
     except Exception:
         raise SystemExit('Kopplung konnte nicht geladen werden. Schluessel und Datensicherung pruefen; Daten bleiben erhalten.') from None
     threading.Thread(target=discover, daemon=True).start()
-    print('NIBE Local HMI 0.6.3: Ingress auf Port 8099, Änderungen gesperrt.')
+    print('NIBE Local HMI 0.6.4: Ingress auf Port 8099, Änderungen gesperrt.')
     ThreadingHTTPServer(('0.0.0.0', 8099), Handler).serve_forever()
 
 

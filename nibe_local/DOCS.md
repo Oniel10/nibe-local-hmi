@@ -168,3 +168,10 @@ Energieflüsse. Das originale Hydraulikbild ist auf der untersuchten NIBE-Firmwa
 beobachteten lokalen systemFlow-Endpunkt nicht verfügbar (HTTP 404).
 Firmwareübertragung prüft zusätzlich den Dateinamen gegen die aktuell gemeldete Firmwarefamilie.
 Dies ersetzt weder Gerätekompatibilitätsprüfung noch Hersteller-Signaturprüfung.
+
+
+## Verbindung bei abgewiesenem Token wiederherstellen
+
+Öffne **Verbindung**, bestätige die neue Kopplungsanfrage und wähle **Erneut koppeln**. Die App sendet eine neue Anfrage an die gespeicherte WP, auch wenn bereits ein Token hinterlegt ist. Gib die Anfrage gegebenenfalls am WP-Display frei und prüfe anschließend den Status. Änderungen bleiben gesperrt, bis du sie erneut bewusst freigibst.
+
+Bei HTTP 401 wurde das Token von der WP abgewiesen. Daraus folgt keine belegte feste Gültigkeitsdauer. Bei Netzwerkfehlern zuerst Erreichbarkeit und WP-Adresse prüfen. Eine fehlgeschlagene Kopplungsanfrage entfernt die bisher gespeicherten Zugangsdaten nicht.
