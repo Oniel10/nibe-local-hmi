@@ -175,3 +175,12 @@ Dies ersetzt weder Gerätekompatibilitätsprüfung noch Hersteller-Signaturprüf
 Öffne **Verbindung**, bestätige die neue Kopplungsanfrage und wähle **Erneut koppeln**. Die App sendet eine neue Anfrage an die gespeicherte WP, auch wenn bereits ein Token hinterlegt ist. Gib die Anfrage gegebenenfalls am WP-Display frei und prüfe anschließend den Status. Änderungen bleiben gesperrt, bis du sie erneut bewusst freigibst.
 
 Bei HTTP 401 wurde das Token von der WP abgewiesen. Daraus folgt keine belegte feste Gültigkeitsdauer. Bei Netzwerkfehlern zuerst Erreichbarkeit und WP-Adresse prüfen. Eine fehlgeschlagene Kopplungsanfrage entfernt die bisher gespeicherten Zugangsdaten nicht.
+
+
+## Fehlgeschlagene Firmwareübertragung
+
+Nach einem Fehler bietet die Firmwareseite **Erneut versuchen?** an. Prüfe zuerst am WP-Display, dass keine Installation läuft. Bestätige den Hinweis aktiv und wähle **Bestätigen und erneut übertragen**. Jede Bestätigung erlaubt genau einen Versuch; die App wiederholt niemals selbstständig. Bei gesperrten Änderungen musst du diese vorher bewusst freigeben.
+
+Die Anzeige **WP-Antwort zur Übertragung** enthält HTTP-Code und die bereinigte JSON-Antwort. Unbekannte JSON-Felder bleiben erhalten; erkennbare Zugangsdaten werden maskiert. Große oder nicht als JSON lesbare Antworten werden nicht als Rohtext angezeigt. Bei einem Verbindungsfehler erscheinen zusätzlich Fehlerart, Phase, Laufzeit und Datenmenge. Die Antwort des erfolgreichen Tests vor dieser Erweiterung wurde gefiltert; ihre damals verworfenen JSON-Felder lassen sich nicht nachträglich rekonstruieren.
+
+HTTP 200 bestätigt die HTTP-Antwort, nicht den Abschluss der Installation. HTTP 400 bedeutet eine abgelehnte Anfrage: den Grund und den WP-Zustand prüfen, statt blind zu wiederholen. Den Installationsabschluss und die neue Softwareversion am WP-Display prüfen.

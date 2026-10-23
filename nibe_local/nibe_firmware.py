@@ -11,6 +11,7 @@ import secrets
 import shutil
 import ssl
 import threading
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -214,6 +215,35 @@ def download(app):
         archive.unlink(missing_ok=True)
 
 
+
+def response_summary(app, response, raw, token):
+    """Bounded diagnostic metadata; never publish arbitrary response headers or credentials."""
+    result = {'http_status': response.status, 'body_bytes': len(raw),
+              'truncated': len(raw) > 65536}
+    if not raw:
+        result['note'] = 'Leere HTTP-Antwort. Kein Installationsstatus vorhanden.'
+    elif len(raw) > 65536:
+        result['note'] = 'Antwort zu groß; Inhalt wird nicht angezeigt.'
+    else:
+        try:
+            value = json.loads(raw)
+            sanitized = app.hmi.safe(value)
+            encoded = json.dumps(sanitized, ensure_ascii=False)
+            if token:
+                encoded = encoded.replace(json.dumps(token, ensure_ascii=False)[1:-1], '[Token entfernt]')
+            result['details'] = json.loads(encoded)
+        except (ValueError, UnicodeError):
+            result['note'] = 'Keine auswertbare JSON-Antwort. Antwortinhalt wird nicht angezeigt.'
+    return result
+
+
+def reply_html():
+    reply = JOB.get('reply')
+    details = {'wp_response': reply, 'transport': JOB.get('transport')}
+    text = json.dumps(details, ensure_ascii=False, indent=2) if reply or details['transport'] else 'Noch keine WP-Antwort für diesen Vorgang.'
+    return '<details open><summary>WP-Antwort zur Übertragung</summary><pre id="firmware-reply">' + html.escape(text) + '</pre></details>'
+
+
 def upload(app, expected_sha, epoch):
     """Local wire format observed in the APK: multipart/form-data, part name=file."""
     with app.WRITE_LOCK, STAGE_LOCK:
@@ -238,12 +268,16 @@ def upload(app, expected_sha, epoch):
         if not (filename == family + '.swu' or filename.startswith(family + '-')):
             raise FirmwareError('Der Dateiname passt nicht zur gemeldeten Firmwarefamilie ' + family + '. Passende Originaldatei wählen; die Datei nicht nur umbenennen.')
         ATTEMPTS.add(attempt)
+        update_job(reply=None, transport=None)
         boundary = 'NibeHMI' + secrets.token_hex(20)
         prefix = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{meta["name"]}"\r\n'
                   'Content-Type: application/octet-stream\r\n\r\n').encode('ascii')
         suffix = f'\r\n--{boundary}--\r\n'.encode('ascii')
         connection = http.client.HTTPSConnection(app.local_host(session['host']), int(session['port']),
                                                  timeout=180, context=app.web._ctx)
+        phase = 'connect_headers'
+        sent = 0
+        started = time.monotonic()
         try:
             with app.API_LOCK:
                 connection.putrequest('POST', '/devices/' + session['serial'] + '/firmware')
@@ -252,21 +286,43 @@ def upload(app, expected_sha, epoch):
                 connection.putheader('Content-Length', str(len(prefix) + meta['size'] + len(suffix)))
                 connection.putheader('Accept', '*/*')
                 connection.endheaders()
+                phase = 'multipart_prefix'
                 connection.send(prefix)
-                sent = 0
+                phase = 'file'
                 with (folder(app) / 'staged.swu').open('rb') as f:
                     while chunk := f.read(CHUNK):
                         connection.send(chunk)
                         sent += len(chunk)
                         update_job(bytes=sent, message='Firmware wird lokal an die WP übertragen.')
+                phase = 'multipart_trailer'
                 connection.send(suffix)
+                phase = 'response_headers'
                 response = connection.getresponse()
-                response.read(65536)
+                phase = 'response_body'
+                raw_reply = response.read(65537)
+                update_job(reply=response_summary(app, response, raw_reply, session['token']))
                 if not 200 <= response.status < 300:
                     raise FirmwareError('WP hat die Übertragung mit HTTP %d abgelehnt. Nicht automatisch wiederholen.' % response.status)
-            update_job(state='done', message='WP hat die Übertragung angenommen. Das bestätigt noch keine abgeschlossene Installation. Status am WP-Display prüfen.', bytes=sent)
-        except (OSError, http.client.HTTPException):
-            raise FirmwareError('Verbindung während der Übertragung unterbrochen. Ausgang unklar: zuerst WP-Display prüfen, nicht automatisch wiederholen.') from None
+            update_job(state='done', message='HTTP-Anfrage zur Übertragung abgeschlossen. Das bestätigt noch keine abgeschlossene Installation oder Freigabe der Firmware. WP-Antwort und Display prüfen.', bytes=sent)
+        except (OSError, http.client.HTTPException) as exc:
+            diagnostic = {'error_type': type(exc).__name__, 'errno': getattr(exc, 'errno', None),
+                          'phase': phase, 'elapsed_seconds': round(time.monotonic() - started, 1),
+                          'sent_bytes': sent, 'total_bytes': meta['size']}
+            update_job(transport=diagnostic)
+            # Read only the existing connection: the controller may have sent an
+            # early rejection while this client was still sending the large file.
+            if phase in ('file', 'multipart_prefix', 'multipart_trailer') and not isinstance(exc, TimeoutError):
+                try:
+                    if connection.sock is not None:
+                        connection.sock.settimeout(2)
+                        early = connection.getresponse()
+                        update_job(reply=response_summary(app, early, early.read(65537), session['token']))
+                except (OSError, http.client.HTTPException):
+                    pass
+            reply = JOB.get('reply') or {}
+            detail = (' WP antwortete mit HTTP %s.' % reply['http_status']) if reply else ''
+            raise FirmwareError('Übertragung unterbrochen: %s, Phase %s, nach %.1f s.%s Ausgang unklar: WP-Display prüfen; nicht automatisch wiederholen.' %
+                                (diagnostic['error_type'], phase, diagnostic['elapsed_seconds'], detail)) from None
         finally:
             connection.close()
 
@@ -274,7 +330,19 @@ def upload(app, expected_sha, epoch):
 def start_job(app, operation, **kwargs):
     if not JOB_LOCK.acquire(blocking=False):
         raise FirmwareError('Es läuft bereits ein Firmware-Vorgang.')
-    update_job(state='running', operation=operation, message='Vorgang gestartet.', bytes=0)
+    try:
+        retry = kwargs.get('retry_nonce')
+        if retry:
+            if (operation != 'upload' or JOB.get('state') != 'error' or JOB.get('operation') != 'upload'
+                    or JOB.get('sha256') != kwargs.get('sha256')
+                    or not secrets.compare_digest(str(JOB.get('retry_nonce') or ''), retry)):
+                raise FirmwareError('Dieser Wiederholungsdialog ist nicht mehr gültig. Firmware-Seite neu laden.')
+            ATTEMPTS.discard((kwargs['epoch'], kwargs['sha256']))
+        update_job(state='running', operation=operation, message='Vorgang gestartet.', bytes=0,
+                   reply=None, transport=None, retry_nonce=None, sha256=kwargs.get('sha256'))
+    except Exception:
+        JOB_LOCK.release()
+        raise
     def run():
         try:
             if operation == 'download':
@@ -283,7 +351,7 @@ def start_job(app, operation, **kwargs):
                 upload(app, kwargs['sha256'], kwargs['epoch'])
         except Exception as exc:
             message = str(exc) if isinstance(exc, FirmwareError) else 'Vorgang fehlgeschlagen. Vor einem erneuten Versuch den Zustand prüfen.'
-            update_job(state='error', message=message)
+            update_job(state='error', message=message, retry_nonce=secrets.token_urlsafe(24) if operation == 'upload' else None)
         finally:
             JOB_LOCK.release()
     threading.Thread(target=run, daemon=True).start()
@@ -293,7 +361,7 @@ def page(app, base):
     e = html.escape
     if JOB.get('state') == 'running' and JOB.get('operation') == 'upload':
         return ('<h2>Lokale Firmwareübertragung läuft</h2><p>Die WP kann anschließend ein Update und einen Neustart ausführen. Stromversorgung nicht unterbrechen.</p>'
-                '<p role="status" id="firmware-status">' + e(JOB['message']) + '</p><p>Weitere Geräteänderungen sind während der Übertragung gesperrt. Eine Sperranfrage wird nach Abschluss der laufenden Übertragung bestätigt.</p>')
+                '<p role="status" id="firmware-status">' + e(JOB['message']) + '</p><p>Weitere Geräteänderungen sind während der Übertragung gesperrt. Eine Sperranfrage wird nach Abschluss der laufenden Übertragung bestätigt.</p>' + reply_html())
     meta = staged(app)
     body = '<h2>Firmware der Wärmepumpe</h2><p>Download und Übertragung sind getrennte Schritte. Keine automatische Installation.</p>'
     body += '<p>Der Download nutzt die offizielle NIBE-Webseite im Internet, ohne myUplink-Konto. Die Bedienung und Übertragung zur WP bleiben lokal.</p>'
@@ -307,11 +375,18 @@ def page(app, base):
         body += f'<p>{e(meta["name"])} · {meta["size"] / 1048576:.1f} MiB</p><p class="hash">SHA-256: {e(meta["sha256"])}</p>'
         body += f'<a class="button" href="{base}/hmi/firmware/file">Datei auf diesen Rechner herunterladen</a>'
         body += '<p>Dateiformat, Prüfsumme und Dateinamen-Zuordnung zur gemeldeten Firmwarefamilie werden geprüft. Das bestätigt weder die tatsächliche Gerätekompatibilität noch eine Hersteller-Signatur. Nur eine ausdrücklich für deinen Regler bestimmte Originaldatei übertragen.</p>'
-        body += app.hmi.form(base, 'firmware-upload', app.hidden('sha256', meta['sha256']), 'Firmware an WP übertragen',
-                             ack='Die Datei ist für meinen Regler bestimmt. Ich möchte die Übertragung starten; sie kann ein Update und einen Neustart auslösen. Währenddessen die Stromversorgung nicht unterbrechen.')
+        retry = JOB.get('retry_nonce') if JOB.get('state') == 'error' and JOB.get('operation') == 'upload' and JOB.get('sha256') == meta['sha256'] else None
+        fields = app.hidden('sha256', meta['sha256'])
+        if retry:
+            body += '<h3>Erneut versuchen?</h3><p>Die letzte Übertragung ist fehlgeschlagen. Prüfe zuerst am WP-Display, dass kein Update läuft. Es erfolgt keine automatische Wiederholung.</p>'
+            fields += app.hidden('retry_nonce', retry)
+        body += app.hmi.form(base, 'firmware-upload', fields,
+                             'Bestätigen und erneut übertragen' if retry else 'Firmware an WP übertragen',
+                             ack='Ich habe am WP-Display geprüft, dass kein Update läuft. Ich möchte diese passende Firmware erneut übertragen; Stromversorgung nicht unterbrechen.' if retry else 'Die Datei ist für meinen Regler bestimmt. Ich möchte die Übertragung starten; sie kann ein Update und einen Neustart auslösen. Währenddessen die Stromversorgung nicht unterbrechen.')
         body += app.hmi.form(base, 'firmware-remove', app.hidden('sha256', meta['sha256']), 'Datei aus der App entfernen',
                              ack='Ich möchte nur die bereitgestellte Update-Datei aus der App löschen. Die WP und die Kopplung bleiben unverändert.', mutation=False)
         body += '</div>'
     body += '<p role="status" id="firmware-status">' + e(JOB['message']) + '</p>'
+    body += reply_html()
     body += '<p>Die PRO-App kennt lokal keinen separaten Update-Status-Endpunkt. Übertragungsfortschritt ist keine Installationsanzeige.</p>'
     return body

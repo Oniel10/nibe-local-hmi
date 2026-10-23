@@ -4,7 +4,7 @@ A local menu interface for compatible NIBE controllers, running as a Home Assist
 Browse the controller's own menu tree, view values, and change supported settings directly
 in their menu rows after explicitly unlocking writes.
 
-**Experimental community project · version 0.6.4 · free non-commercial use of unmodified versions only; see LICENSE**
+**Experimental community project · version 0.6.5 · free non-commercial use of unmodified versions only; see LICENSE**
 
 [![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FOniel10%2Fnibe-local-hmi)
 

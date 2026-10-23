@@ -605,7 +605,7 @@ def perform(operation, fields, base):
             expected = single(fields, 'sha256')
             if not re.fullmatch(r'[a-f0-9]{64}', expected):
                 raise ValueError('Ungültige Firmware-Prüfsumme.')
-            firmware.start_job(APP, 'upload', sha256=expected, epoch=APP.WRITE_EPOCH)
+            firmware.start_job(APP, 'upload', sha256=expected, epoch=APP.WRITE_EPOCH, retry_nonce=single(fields, 'retry_nonce'))
         elif operation == 'chain-open':
             mid, chain = single(fields, 'menu'), single(fields, 'chain')
             if not re.fullmatch(r'\d{1,9}', mid) or not re.fullmatch(r'\d{1,18}', chain):

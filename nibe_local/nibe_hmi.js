@@ -89,6 +89,8 @@
       const response = await fetch(base + "/hmi/firmware/status", {cache: "no-store", credentials: "same-origin"});
       if (!response.ok) throw new Error();
       const job = await response.json();
+      const reply = document.getElementById("firmware-reply");
+      if (reply) reply.textContent = (job.reply || job.transport) ? JSON.stringify({wp_response: job.reply, transport: job.transport}, null, 2) : "Noch keine WP-Antwort für diesen Vorgang.";
       status.textContent = job.message + (job.bytes ? " · " + (job.bytes / 1048576).toFixed(1) + " MiB" : "");
       if (job.state === "running") {
         busy = true;
@@ -96,7 +98,7 @@
       } else if (busy) {
         const link = document.createElement("a");
         link.href = base + "/hmi/firmware";
-        link.textContent = " Ansicht aktualisieren";
+        link.textContent = job.state === "error" && job.operation === "upload" ? " Erneut versuchen?" : " Ansicht aktualisieren";
         status.appendChild(link);
       }
     } catch {

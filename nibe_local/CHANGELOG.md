@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.5 — Firmware-Antwort und bestätigter neuer Versuch
+
+- Nach fehlgeschlagenem Firmware-Upload „Erneut versuchen?“ anbieten. Erst nach aktiver Bestätigung und Prüfung am WP-Display startet genau ein neuer Versuch. Keine automatische Wiederholung.
+- Wiederholungsfreigaben sind einmalig und an den fehlgeschlagenen Vorgang und die Datei gebunden; Änderungssperre, CSRF, Prüfsumme und Geräteprüfung bleiben aktiv.
+- HTTP-Antwort nach dem Senden abwarten und vollständige JSON-Struktur mit maskierten Zugangsdaten anzeigen, einschließlich bislang unbekannter Felder.
+- Transportfehler mit Fehlerart, Phase, Laufzeit und gesendeter Datenmenge erfassen; eine eventuell vorliegende frühe WP-Antwort aus derselben Verbindung lesen.
+- HTTP 2xx bestätigt keine abgeschlossene Installation. HTTP 4xx ist eine Ablehnung und wird nicht automatisch wiederholt.
+- Lokaler HA-Test: vollständige Übertragung mit HTTP 200; anschließendes WP-Update von 4.13.12 auf 4.14.6 vom Nutzer bestätigt. Ein zuvor sporadischer Verbindungsabbruch bleibt ungeklärt.
+- Wiederholungsdialog, Einmalfreigabe und JSON-Maskierung gegen Mock geprüft; keine zusätzliche reale Firmwareübertragung durch diese Änderung.
+
 ## 0.6.4 — Erneute Kopplung bei abgewiesenem Token
 
 - Unter Verbindung eine ausdrücklich bestätigte neue Kopplungsanfrage an die gespeicherte WP ermöglichen, auch wenn bereits ein Token gespeichert ist.

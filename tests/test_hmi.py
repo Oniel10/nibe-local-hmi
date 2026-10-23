@@ -45,6 +45,7 @@ number = {'type': 'uinumerical', 'parameterId': '10', 'text': {'text': 'Temperat
 menu = {'id': 50, 'name': {'text': 'Mock Menü'}, 'rows': [event, chain, {'type': 'uigroup', 'rows': [number, secret]}]}
 writes = []
 firmware_response = 204
+firmware_body = None
 upload_received = threading.Event()
 upload_release = threading.Event()
 block_upload = False
@@ -95,7 +96,7 @@ class Mock(BaseHTTPRequestHandler):
                 self.close_connection = True
                 self.connection.close()
                 return
-            return self.reply(firmware_response)
+            return self.reply(firmware_response, firmware_body)
         return self.reply(204)
     do_POST = do_PATCH = do_DELETE = change
 
@@ -251,6 +252,36 @@ with tempfile.TemporaryDirectory() as directory:
         device['product']['firmwareId']='other-family'
         denied(lambda:firmware.upload(app,meta['sha256'],app.WRITE_EPOCH),'Firmware from a different reported family rejected')
         device['product']['firmwareId']='mock'
+        # Model a controller that rejects before the complete file has been sent.
+        real_connection=firmware.http.client.HTTPSConnection
+        class EarlyResponse:
+            status=413
+            def read(self,n):return b'{"message":"mock upload limit"}'
+        class EarlyConnection:
+            def __init__(self,*args,**kwargs):self.sock=self;self.sends=0
+            def putrequest(self,*args):pass
+            def putheader(self,*args):pass
+            def endheaders(self):pass
+            def send(self,data):
+                self.sends+=1
+                if self.sends==2:raise BrokenPipeError(32,'synthetic send failure')
+            def settimeout(self,value):pass
+            def getresponse(self):return EarlyResponse()
+            def close(self):pass
+        original_epoch=app.WRITE_EPOCH
+        original_api=app.api
+        app.api=lambda *args,**kwargs:device
+        app.WRITE_EPOCH='early-rejection-test'
+        firmware.http.client.HTTPSConnection=EarlyConnection
+        try:
+            denied(lambda:firmware.upload(app,meta['sha256'],app.WRITE_EPOCH),'Early HTTP rejection is not reported as success')
+            check('Early response survives send failure',firmware.JOB['reply']['http_status']==413)
+            check('Transport cause and phase retained',firmware.JOB['transport']['error_type']=='BrokenPipeError' and firmware.JOB['transport']['phase']=='file' and firmware.JOB['transport']['errno']==32)
+            check('Transport diagnostic excludes token',TOKEN not in json.dumps(firmware.JOB['transport']))
+        finally:
+            firmware.http.client.HTTPSConnection=real_connection
+            app.WRITE_EPOCH=original_epoch
+            app.api=original_api
         firmware.upload(app,meta['sha256'],app.WRITE_EPOCH)
         sent = writes[-1]
         check('Firmware multipart POST uses local endpoint and file part', sent[0] == 'POST' and sent[1].endswith('/firmware') and b'name="file"' in sent[2] and payload in sent[2])
@@ -259,9 +290,15 @@ with tempfile.TemporaryDirectory() as directory:
         denied(lambda:firmware.upload(app,meta['sha256'],app.WRITE_EPOCH),'Repeated firmware attempt requires renewed acknowledgement')
         check('Replay produced no second upload', len(writes) == n)
         check('Status distinguishes acceptance from installation', 'noch keine abgeschlossene Installation' in firmware.JOB['message'])
+        check('Empty firmware response recorded as HTTP only', firmware.JOB['reply']['http_status'] == 204 and firmware.JOB['reply']['body_bytes'] == 0)
         app.WRITE_EPOCH='new-test-epoch';firmware_response=403
+        firmware_body={'message':'Mock: firmware not accepted '+TOKEN,'token':TOKEN}
         denied(lambda:firmware.upload(app,meta['sha256'],app.WRITE_EPOCH),'WP firmware rejection surfaced without retry')
         check('WP rejection not automatically retried', len(writes) == n+1)
+        check('Firmware rejection response captured without token',firmware.JOB['reply']['http_status']==403 and 'Mock: firmware not accepted' in json.dumps(firmware.JOB['reply']) and TOKEN not in json.dumps(firmware.JOB['reply']))
+        reply_page=request('/hmi/firmware')[2].decode()
+        check('Firmware reply visible on page', 'Mock: firmware not accepted' in reply_page and TOKEN not in reply_page)
+        firmware_body=None
         app.WRITE_EPOCH='another-test-epoch';firmware_response=-1
         try:firmware.upload(app,meta['sha256'],app.WRITE_EPOCH)
         except firmware.FirmwareError as exc:check('Lost response reported as unknown outcome', 'unklar' in str(exc))
@@ -300,6 +337,29 @@ with tempfile.TemporaryDirectory() as directory:
             if not firmware.JOB_LOCK.locked():break
             time.sleep(.05)
         check('Background transfer completes once', firmware.JOB['state'] == 'done' and not firmware.JOB_LOCK.locked() and len(writes) == count)
+
+        response=type('Response',(),{'status':200})()
+        parsed=firmware.response_summary(app,response,json.dumps({'previouslyUnknown':{'value':7,'password':SECRET},'echo':TOKEN}).encode(),TOKEN)
+        check('Unknown JSON fields retained with nested secrets masked',parsed['details']['previouslyUnknown']['value']==7 and SECRET not in json.dumps(parsed) and TOKEN not in json.dumps(parsed))
+        app.WRITES_LOCKED=False;app.WRITE_EPOCH='retry-behavior-test';firmware_response=400;block_upload=False
+        firmware.start_job(app,'upload',sha256=meta['sha256'],epoch=app.WRITE_EPOCH)
+        for _ in range(100):
+            if not firmware.JOB_LOCK.locked():break
+            time.sleep(.03)
+        check('Failed upload asks for explicit retry',firmware.JOB['state']=='error' and bool(firmware.JOB.get('retry_nonce')) and b'Erneut versuchen?' in request('/hmi/firmware')[2])
+        retry=firmware.JOB['retry_nonce'];count=len(writes)
+        time.sleep(.1)
+        check('No automatic firmware retry',len(writes)==count)
+        denied(lambda:firmware.start_job(app,'upload',sha256=meta['sha256'],epoch=app.WRITE_EPOCH,retry_nonce='wrong'),'Invalid retry proof rejected')
+        check('Retry without acknowledgement blocked',post('firmware-upload',sha256=meta['sha256'],retry_nonce=retry,ack='',page='firmware')[0]==400 and len(writes)==count)
+        firmware_response=204
+        check('Explicit retry POST accepted',post('firmware-upload',sha256=meta['sha256'],retry_nonce=retry,page='firmware')[0]==303)
+        for _ in range(100):
+            if not firmware.JOB_LOCK.locked():break
+            time.sleep(.03)
+        check('Confirmed retry sends exactly one new upload',firmware.JOB['state']=='done' and len(writes)==count+1)
+        denied(lambda:firmware.start_job(app,'upload',sha256=meta['sha256'],epoch=app.WRITE_EPOCH,retry_nonce=retry),'Consumed retry proof cannot replay')
+
     finally:
         upload_release.set()
         server.shutdown();server.server_close();mock.shutdown();mock.server_close()
